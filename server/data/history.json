@@ -1,5 +1,89 @@
 [
   {
+    "id": "68d2bcbb-f2fe-4702-b51b-900907390764",
+    "timestamp": "2026-11-23T13:48:47.042Z",
+    "action": "module.update",
+    "details": "Updated module billing-backend in dev",
+    "status": "success"
+  },
+  {
+    "id": "2869d7c7-9ead-4f54-8902-6c905e634679",
+    "timestamp": "2026-11-23T13:48:21.031Z",
+    "action": "module.commit",
+    "details": "Committed 1 file(s) in db (test) r7428",
+    "status": "success"
+  },
+  {
+    "id": "e5d46b2b-49e1-4d65-b122-c211e15f8c47",
+    "timestamp": "2026-11-23T13:48:15.901Z",
+    "action": "module.commit",
+    "details": "Committed 2 file(s) in billing-frontend (test) r7427",
+    "status": "success"
+  },
+  {
+    "id": "9b10040e-0870-4347-b225-22e034f40ccd",
+    "timestamp": "2026-11-23T13:48:02.594Z",
+    "action": "module.commit",
+    "details": "Committed 2 file(s) in billing-backend (test) r7426",
+    "status": "success"
+  },
+  {
+    "id": "de4288ec-4e37-4be9-8bb6-5d946f95e20b",
+    "timestamp": "2026-11-23T13:46:57.682Z",
+    "action": "settings.update",
+    "details": "Updated settings (mode: sample, root: E:\\rcm\\control-svn\\sample-rcm)",
+    "status": "success"
+  },
+  {
+    "id": "5756c7ba-086d-45d4-8309-80ce0186fc12",
+    "timestamp": "2026-11-23T13:46:54.720Z",
+    "action": "settings.update",
+    "details": "Updated settings (mode: sample, root: E:\\rcm\\control-svn\\sample-rcm)",
+    "status": "success"
+  },
+  {
+    "id": "cff27eca-aa30-40e4-bb6e-3032e1430278",
+    "timestamp": "2026-11-23T13:46:22.193Z",
+    "action": "conflict.resolve",
+    "details": "Resolved conflict sync-b6329876 (working)",
+    "status": "success"
+  },
+  {
+    "id": "ad559ad0-7f14-48c2-9978-265128ff2565",
+    "timestamp": "2026-11-23T13:46:06.045Z",
+    "action": "conflict.resolve",
+    "details": "Resolved conflict sync-808f3cee (working)",
+    "status": "success"
+  },
+  {
+    "id": "fbf34fc3-81c7-49ff-a973-672ac228fedc",
+    "timestamp": "2026-11-23T13:45:45.882Z",
+    "action": "conflict.resolve",
+    "details": "Resolved conflict sync-d29110c6 (working)",
+    "status": "success"
+  },
+  {
+    "id": "d0a9c60d-c441-4d51-9840-7eeb603a6a77",
+    "timestamp": "2026-11-23T13:45:30.335Z",
+    "action": "transfer.svnMerge",
+    "details": "SVN merge DEV -> TEST: 11 module(s), 8 conflict(s)",
+    "status": "success"
+  },
+  {
+    "id": "2c53c80b-361c-4c31-a17a-53233d2bcaa0",
+    "timestamp": "2026-11-23T13:44:34.332Z",
+    "action": "transfer.rollback",
+    "details": "Rolled back 3 file(s) using snapshot rb-c8c6db3b",
+    "status": "success"
+  },
+  {
+    "id": "ba813714-0f64-4056-96eb-8c7601a1c6fe",
+    "timestamp": "2026-11-23T13:43:59.262Z",
+    "action": "transfer.svnMerge",
+    "details": "SVN merge DEV -> TEST: 1 module(s), 2 conflict(s)",
+    "status": "success"
+  },
+  {
     "id": "219d9172-be0b-4064-943b-53d2b54868e2",
     "timestamp": "2026-11-23T13:39:48.925Z",
     "action": "sample.reset",
