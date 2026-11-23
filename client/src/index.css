@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html[lang="ar"] body {
+    font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif;
+  }
+
+  html[lang="en"] body {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}
+
+/* Custom crisp scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}

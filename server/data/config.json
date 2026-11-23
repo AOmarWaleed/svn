@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "mode": "demo",
+    "svnPath": "svn",
+    "editorCommand": "code",
+    "authMode": "cached",
+    "username": "",
+    "password": "",
+    "trustServerCert": true,
+    "autoUpdateBeforeMerge": false,
+    "defaultScanRoot": "D:\\CompanySVN"
+  },
+  "branches": []
+}

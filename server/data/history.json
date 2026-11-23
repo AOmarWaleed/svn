@@ -1,0 +1,27 @@
+[
+  {
+    "id": "3f2020fa-0052-4777-aca2-b9057bfdd860",
+    "timestamp": "2026-11-23T09:36:57.543Z",
+    "action": "demo.reset",
+    "details": "Reset Demo Sandbox to initial state",
+    "status": "success"
+  },
+  {
+    "id": "61ed5a2a-00fe-49e0-b34b-21f8220b9a21",
+    "timestamp": "2026-11-23T09:36:57.527Z",
+    "action": "merge.confirm",
+    "branchName": "feature/billing-v2",
+    "targetBranchName": "master (trunk)",
+    "details": "Merged feature/billing-v2 -> master (trunk) with 3 conflict(s)",
+    "status": "success"
+  },
+  {
+    "id": "9508b58c-f0d6-4693-aaee-7001d3b20395",
+    "timestamp": "2026-11-23T09:36:57.476Z",
+    "action": "merge.test",
+    "branchName": "feature/billing-v2",
+    "targetBranchName": "master (trunk)",
+    "details": "Dry-run feature/billing-v2 -> master (trunk): 5 impacted, 3 predicted conflict(s)",
+    "status": "success"
+  }
+]
