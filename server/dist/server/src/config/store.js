@@ -3,18 +3,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSampleRepoRoot = getSampleRepoRoot;
 exports.testSvnExecutable = testSvnExecutable;
 exports.detectInstalledSvnPaths = detectInstalledSvnPaths;
 exports.getCachedDetectedSvnPaths = getCachedDetectedSvnPaths;
 exports.initConfigStore = initConfigStore;
 exports.getSettings = getSettings;
+exports.getActiveRepoRoot = getActiveRepoRoot;
 exports.getPublicSettings = getPublicSettings;
 exports.updateSettings = updateSettings;
-exports.getRealBranches = getRealBranches;
-exports.addRealBranch = addRealBranch;
-exports.updateRealBranch = updateRealBranch;
-exports.removeRealBranch = removeRealBranch;
-exports.setRealMasterBranch = setRealMasterBranch;
+exports.getEnvs = getEnvs;
+exports.getEnvById = getEnvById;
+exports.getModules = getModules;
+exports.getModuleById = getModuleById;
+exports.addModule = addModule;
+exports.updateModule = updateModule;
+exports.deleteModule = deleteModule;
 exports.getOperationHistory = getOperationHistory;
 exports.appendOperationHistory = appendOperationHistory;
 const node_child_process_1 = require("node:child_process");
@@ -23,7 +27,8 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const promises_1 = __importDefault(require("node:fs/promises"));
 const node_path_1 = __importDefault(require("node:path"));
 const pathSafety_1 = require("../utils/pathSafety");
-const MAX_HISTORY = 200;
+const defaults_1 = require("./defaults");
+const MAX_HISTORY = 250;
 const COMMON_WINDOWS_SVN_PATHS = [
     'C:\\Program Files\\TortoiseSVN\\bin\\svn.exe',
     'C:\\Program Files (x86)\\TortoiseSVN\\bin\\svn.exe',
@@ -31,8 +36,10 @@ const COMMON_WINDOWS_SVN_PATHS = [
     'C:\\Program Files (x86)\\SlikSvn\\bin\\svn.exe',
     'C:\\Program Files\\VisualSVN Server\\bin\\svn.exe',
     'C:\\Program Files (x86)\\Subversion\\bin\\svn.exe',
-    'C:\\Program Files\\CollabNet\\Subversion Client\\svn.exe',
 ];
+function getSampleRepoRoot() {
+    return node_path_1.default.join((0, pathSafety_1.getProjectRoot)(), 'sample-rcm');
+}
 function getDataDir() {
     return node_path_1.default.join((0, pathSafety_1.getProjectRoot)(), 'server', 'data');
 }
@@ -65,9 +72,7 @@ function testSvnExecutable(svnPath) {
         }, 4500);
         let child;
         try {
-            child = (0, node_child_process_1.spawn)(trimmed, ['--version', '--quiet'], {
-                windowsHide: true,
-            });
+            child = (0, node_child_process_1.spawn)(trimmed, ['--version', '--quiet'], { windowsHide: true });
         }
         catch (err) {
             clearTimeout(timer);
@@ -78,11 +83,11 @@ function testSvnExecutable(svnPath) {
             });
             return;
         }
-        child.stdout?.on('data', (chunk) => {
-            stdout += String(chunk);
+        child.stdout?.on('data', (c) => {
+            stdout += String(c);
         });
-        child.stderr?.on('data', (chunk) => {
-            stderr += String(chunk);
+        child.stderr?.on('data', (c) => {
+            stderr += String(c);
         });
         child.on('error', (err) => {
             if (settled)
@@ -97,8 +102,7 @@ function testSvnExecutable(svnPath) {
             settled = true;
             clearTimeout(timer);
             if (code === 0) {
-                const version = stdout.trim() || 'unknown';
-                resolve({ available: true, version });
+                resolve({ available: true, version: stdout.trim() || 'unknown' });
             }
             else {
                 resolve({
@@ -113,11 +117,11 @@ function testSvnExecutable(svnPath) {
 function runWhereSvn() {
     return new Promise((resolve) => {
         const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
-        let stdout = '';
+        let out = '';
         try {
             const child = (0, node_child_process_1.spawn)(cmd, ['svn'], { windowsHide: true });
             child.stdout?.on('data', (c) => {
-                stdout += String(c);
+                out += String(c);
             });
             child.on('error', () => resolve([]));
             child.on('close', (code) => {
@@ -125,11 +129,10 @@ function runWhereSvn() {
                     resolve([]);
                     return;
                 }
-                const lines = stdout
+                resolve(out
                     .split(/\r?\n/)
                     .map((l) => l.trim())
-                    .filter(Boolean);
-                resolve(lines);
+                    .filter(Boolean));
             });
         }
         catch {
@@ -138,23 +141,18 @@ function runWhereSvn() {
     });
 }
 async function detectInstalledSvnPaths() {
-    const candidates = new Set();
-    const fromPath = await runWhereSvn();
-    for (const p of fromPath)
-        candidates.add(p);
+    const candidates = new Set(await runWhereSvn());
     if (process.platform === 'win32') {
         for (const p of COMMON_WINDOWS_SVN_PATHS) {
-            if (node_fs_1.default.existsSync(p)) {
+            if (node_fs_1.default.existsSync(p))
                 candidates.add(p);
-            }
         }
     }
     const valid = [];
-    for (const candidate of candidates) {
-        const res = await testSvnExecutable(candidate);
-        if (res.available) {
-            valid.push(candidate);
-        }
+    for (const c of candidates) {
+        const res = await testSvnExecutable(c);
+        if (res.available)
+            valid.push(c);
     }
     detectedSvnPathsCache = valid;
     return valid;
@@ -162,23 +160,25 @@ async function detectInstalledSvnPaths() {
 function getCachedDetectedSvnPaths() {
     return [...detectedSvnPathsCache];
 }
-function defaultSettings(detectedPaths) {
-    const svnAvailable = detectedPaths.length > 0;
+function defaultSettings(detectedSvn) {
+    const companyDefaultRoot = 'C:\\Users\\appdev3l\\Desktop\\rcm';
+    const hasRealCompanyRepo = detectedSvn.length > 0 && node_fs_1.default.existsSync(companyDefaultRoot);
     return {
-        mode: svnAvailable ? 'real' : 'demo',
-        svnPath: detectedPaths[0] ?? 'svn',
+        mode: hasRealCompanyRepo ? 'real' : 'sample',
+        repoRoot: companyDefaultRoot,
+        svnPath: detectedSvn[0] ?? 'svn',
         editorCommand: 'code',
         authMode: 'cached',
         username: '',
         password: '',
         trustServerCert: true,
-        autoUpdateBeforeMerge: false,
-        defaultScanRoot: process.platform === 'win32' ? 'D:\\CompanySVN' : '/var/svn',
+        ignorePatterns: [...defaults_1.DEFAULT_IGNORE_PATTERNS],
+        protectedPatterns: [...defaults_1.DEFAULT_PROTECTED_PATTERNS],
     };
 }
-async function persistConfig(config) {
+async function persistConfig(cfg) {
     await promises_1.default.mkdir(getDataDir(), { recursive: true });
-    await promises_1.default.writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf8');
+    await promises_1.default.writeFile(getConfigPath(), JSON.stringify(cfg, null, 2), 'utf8');
 }
 async function persistHistory(entries) {
     await promises_1.default.mkdir(getDataDir(), { recursive: true });
@@ -197,13 +197,19 @@ async function initConfigStore() {
                     ...defaultSettings(detected),
                     ...(parsed.settings ?? {}),
                 },
-                branches: Array.isArray(parsed.branches) ? parsed.branches : [],
+                envs: Array.isArray(parsed.envs) && parsed.envs.length > 0
+                    ? parsed.envs
+                    : defaults_1.DEFAULT_ENVS.map((e) => ({ ...e })),
+                modules: Array.isArray(parsed.modules) && parsed.modules.length > 0
+                    ? parsed.modules
+                    : defaults_1.DEFAULT_MODULES.map((m) => ({ ...m, paths: { ...m.paths } })),
             };
         }
         catch {
             cachedConfig = {
                 settings: defaultSettings(detected),
-                branches: [],
+                envs: defaults_1.DEFAULT_ENVS.map((e) => ({ ...e })),
+                modules: defaults_1.DEFAULT_MODULES.map((m) => ({ ...m, paths: { ...m.paths } })),
             };
             await persistConfig(cachedConfig);
         }
@@ -211,7 +217,8 @@ async function initConfigStore() {
     else {
         cachedConfig = {
             settings: defaultSettings(detected),
-            branches: [],
+            envs: defaults_1.DEFAULT_ENVS.map((e) => ({ ...e })),
+            modules: defaults_1.DEFAULT_MODULES.map((m) => ({ ...m, paths: { ...m.paths } })),
         };
         await persistConfig(cachedConfig);
     }
@@ -235,19 +242,31 @@ function ensureConfig() {
     if (!cachedConfig) {
         cachedConfig = {
             settings: defaultSettings(detectedSvnPathsCache),
-            branches: [],
+            envs: defaults_1.DEFAULT_ENVS.map((e) => ({ ...e })),
+            modules: defaults_1.DEFAULT_MODULES.map((m) => ({ ...m, paths: { ...m.paths } })),
         };
     }
     return cachedConfig;
 }
 function getSettings() {
-    return { ...ensureConfig().settings };
+    return {
+        ...ensureConfig().settings,
+        ignorePatterns: [...ensureConfig().settings.ignorePatterns],
+        protectedPatterns: [...ensureConfig().settings.protectedPatterns],
+    };
+}
+function getActiveRepoRoot() {
+    const settings = ensureConfig().settings;
+    return settings.mode === 'sample' ? getSampleRepoRoot() : settings.repoRoot;
 }
 function getPublicSettings() {
-    const { password, ...rest } = getSettings();
+    const settings = getSettings();
+    const { password, ...rest } = settings;
     return {
         ...rest,
         hasPassword: Boolean(password),
+        activeRepoRoot: getActiveRepoRoot(),
+        sampleRepoRoot: getSampleRepoRoot(),
     };
 }
 async function updateSettings(payload) {
@@ -255,15 +274,22 @@ async function updateSettings(payload) {
     const next = {
         ...cfg.settings,
         ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
+        ...(payload.repoRoot !== undefined ? { repoRoot: payload.repoRoot.trim() } : {}),
         ...(payload.svnPath !== undefined ? { svnPath: payload.svnPath.trim() || 'svn' } : {}),
-        ...(payload.editorCommand !== undefined ? { editorCommand: payload.editorCommand.trim() || 'default' } : {}),
+        ...(payload.editorCommand !== undefined
+            ? { editorCommand: payload.editorCommand.trim() || 'code' }
+            : {}),
         ...(payload.authMode !== undefined ? { authMode: payload.authMode } : {}),
         ...(payload.username !== undefined ? { username: payload.username } : {}),
-        ...(payload.trustServerCert !== undefined ? { trustServerCert: payload.trustServerCert } : {}),
-        ...(payload.autoUpdateBeforeMerge !== undefined
-            ? { autoUpdateBeforeMerge: payload.autoUpdateBeforeMerge }
+        ...(payload.trustServerCert !== undefined
+            ? { trustServerCert: payload.trustServerCert }
             : {}),
-        ...(payload.defaultScanRoot !== undefined ? { defaultScanRoot: payload.defaultScanRoot.trim() } : {}),
+        ...(Array.isArray(payload.ignorePatterns)
+            ? { ignorePatterns: payload.ignorePatterns.map((p) => p.trim()).filter(Boolean) }
+            : {}),
+        ...(Array.isArray(payload.protectedPatterns)
+            ? { protectedPatterns: payload.protectedPatterns.map((p) => p.trim()).filter(Boolean) }
+            : {}),
     };
     if (payload.clearPassword) {
         next.password = '';
@@ -275,76 +301,79 @@ async function updateSettings(payload) {
     await persistConfig(cfg);
     return getPublicSettings();
 }
-function getRealBranches() {
-    return ensureConfig().branches.map((b) => ({ ...b }));
+function getEnvs() {
+    return ensureConfig().envs.map((e) => ({ ...e }));
 }
-async function addRealBranch(input) {
+function getEnvById(id) {
+    const env = ensureConfig().envs.find((e) => e.id === id);
+    if (!env) {
+        throw Object.assign(new Error(`Environment not found: ${id}`), { statusCode: 404 });
+    }
+    return { ...env };
+}
+function getModules() {
+    return ensureConfig().modules.map((m) => ({ ...m, paths: { ...m.paths } }));
+}
+function getModuleById(id) {
+    const mod = ensureConfig().modules.find((m) => m.id === id);
+    if (!mod) {
+        throw Object.assign(new Error(`Module not found: ${id}`), { statusCode: 404 });
+    }
+    return { ...mod, paths: { ...mod.paths } };
+}
+async function addModule(input) {
     const cfg = ensureConfig();
-    const normalizedPath = node_path_1.default.resolve(input.path.trim());
-    const duplicate = cfg.branches.find((b) => process.platform === 'win32'
-        ? node_path_1.default.resolve(b.path).toLowerCase() === normalizedPath.toLowerCase()
-        : node_path_1.default.resolve(b.path) === normalizedPath);
-    if (duplicate) {
-        throw Object.assign(new Error(`Branch path already added: ${normalizedPath}`), { statusCode: 409 });
+    const baseSlug = input.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+    let id = baseSlug || `mod-${(0, node_crypto_1.randomUUID)().slice(0, 6)}`;
+    if (cfg.modules.some((m) => m.id === id)) {
+        id = `${id}-${(0, node_crypto_1.randomUUID)().slice(0, 4)}`;
     }
-    const isMaster = Boolean(input.isMaster) || cfg.branches.length === 0;
-    if (isMaster) {
-        cfg.branches = cfg.branches.map((b) => ({ ...b, isMaster: false }));
-    }
-    const branch = {
-        id: (0, node_crypto_1.randomUUID)(),
-        name: input.name.trim() || node_path_1.default.basename(normalizedPath),
-        path: normalizedPath,
-        isMaster,
-        color: input.color,
+    const created = {
+        id,
+        name: input.name.trim(),
+        category: (input.category || 'Custom').trim(),
+        paths: Object.fromEntries(Object.entries(input.paths).map(([k, v]) => [k, v.trim().replace(/^[/\\]+|[/\\]+$/g, '')])),
     };
-    cfg.branches.push(branch);
+    cfg.modules.push(created);
     await persistConfig(cfg);
-    return { ...branch };
+    return { ...created, paths: { ...created.paths } };
 }
-async function updateRealBranch(id, patch) {
+async function updateModule(id, patch) {
     const cfg = ensureConfig();
-    const idx = cfg.branches.findIndex((b) => b.id === id);
+    const idx = cfg.modules.findIndex((m) => m.id === id);
     if (idx === -1) {
-        throw Object.assign(new Error(`Branch not found: ${id}`), { statusCode: 404 });
+        throw Object.assign(new Error(`Module not found: ${id}`), { statusCode: 404 });
     }
-    if (patch.isMaster) {
-        cfg.branches = cfg.branches.map((b) => ({ ...b, isMaster: b.id === id }));
-    }
-    const existing = cfg.branches[idx];
+    const existing = cfg.modules[idx];
     const updated = {
         ...existing,
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-        ...(patch.path !== undefined ? { path: node_path_1.default.resolve(patch.path.trim()) } : {}),
-        ...(patch.isMaster !== undefined ? { isMaster: patch.isMaster } : {}),
-        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.category !== undefined ? { category: patch.category.trim() } : {}),
+        ...(patch.paths !== undefined
+            ? {
+                paths: Object.fromEntries(Object.entries(patch.paths).map(([k, v]) => [
+                    k,
+                    v.trim().replace(/^[/\\]+|[/\\]+$/g, ''),
+                ])),
+            }
+            : {}),
     };
-    cfg.branches[idx] = updated;
+    cfg.modules[idx] = updated;
     await persistConfig(cfg);
-    return { ...updated };
+    return { ...updated, paths: { ...updated.paths } };
 }
-async function removeRealBranch(id) {
+async function deleteModule(id) {
     const cfg = ensureConfig();
-    const idx = cfg.branches.findIndex((b) => b.id === id);
+    const idx = cfg.modules.findIndex((m) => m.id === id);
     if (idx === -1) {
-        throw Object.assign(new Error(`Branch not found: ${id}`), { statusCode: 404 });
+        throw Object.assign(new Error(`Module not found: ${id}`), { statusCode: 404 });
     }
-    const wasMaster = cfg.branches[idx].isMaster;
-    cfg.branches.splice(idx, 1);
-    if (wasMaster && cfg.branches.length > 0) {
-        cfg.branches[0].isMaster = true;
-    }
+    cfg.modules.splice(idx, 1);
     await persistConfig(cfg);
-}
-async function setRealMasterBranch(id) {
-    const cfg = ensureConfig();
-    const exists = cfg.branches.some((b) => b.id === id);
-    if (!exists) {
-        throw Object.assign(new Error(`Branch not found: ${id}`), { statusCode: 404 });
-    }
-    cfg.branches = cfg.branches.map((b) => ({ ...b, isMaster: b.id === id }));
-    await persistConfig(cfg);
-    return getRealBranches();
 }
 function getOperationHistory() {
     return [...(cachedHistory ?? [])];

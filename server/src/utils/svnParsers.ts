@@ -1,15 +1,12 @@
 import { XMLParser } from 'fast-xml-parser';
 import type {
-  BranchCounts,
   FileStatusCode,
   LogChangedPath,
   LogEntry,
-  MergeFileAction,
-  MergeFileImpact,
-  MergeImpactSummary,
-  WorkingCopyFile,
+  ScannedSvnFile,
+  SvnMergeImpactItem,
 } from '../../../shared/types';
-import { toRelativePosixPath } from './pathSafety';
+import { toPosixRel } from './pathSafety';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -88,14 +85,10 @@ function mapStatusItem(item: string | undefined): FileStatusCode {
   }
 }
 
-export function parseSvnStatusXml(
-  xml: string,
-  workingCopyPath: string
-): { files: WorkingCopyFile[]; counts: BranchCounts } {
+export function parseSvnStatusXml(xml: string, workingCopyPath: string): ScannedSvnFile[] {
   const parsed = xmlParser.parse(xml);
   const targets = parsed?.status?.target ?? [];
-
-  const fileMap = new Map<string, WorkingCopyFile>();
+  const fileMap = new Map<string, ScannedSvnFile>();
 
   for (const target of targets) {
     const entries = target?.entry ?? [];
@@ -103,7 +96,7 @@ export function parseSvnStatusXml(
       const rawPath = String(entry['@_path'] ?? '');
       if (!rawPath) continue;
 
-      const relPath = toRelativePosixPath(workingCopyPath, rawPath);
+      const relPath = toPosixRel(workingCopyPath, rawPath);
       const wcStatus = entry['wc-status'] ?? {};
       const reposStatus = entry['repos-status'];
 
@@ -111,12 +104,9 @@ export function parseSvnStatusXml(
       const props = String(wcStatus['@_props'] ?? 'none');
       const treeConflicted = String(wcStatus['@_tree-conflicted'] ?? 'false') === 'true';
       const status = mapStatusItem(item);
-      const remoteModified = Boolean(reposStatus && reposStatus['@_item'] && reposStatus['@_item'] !== 'none');
-
-      // Ignore root '.' if it has no local/prop/tree/remote changes
-      if (relPath === '.' && status === 'normal' && props === 'none' && !treeConflicted && !remoteModified) {
-        continue;
-      }
+      const remoteModified = Boolean(
+        reposStatus && reposStatus['@_item'] && reposStatus['@_item'] !== 'none'
+      );
 
       if (status === 'normal' && props === 'none' && !treeConflicted && !remoteModified) {
         continue;
@@ -139,29 +129,7 @@ export function parseSvnStatusXml(
     }
   }
 
-  const files = Array.from(fileMap.values()).sort((a, b) => a.path.localeCompare(b.path));
-  const counts: BranchCounts = {
-    modified: 0,
-    added: 0,
-    deleted: 0,
-    unversioned: 0,
-    conflicted: 0,
-    treeConflicts: 0,
-    incoming: 0,
-  };
-
-  for (const file of files) {
-    if (file.status === 'modified' || file.status === 'replaced') counts.modified++;
-    else if (file.status === 'added') counts.added++;
-    else if (file.status === 'deleted' || file.status === 'missing') counts.deleted++;
-    else if (file.status === 'unversioned') counts.unversioned++;
-    else if (file.status === 'conflicted') counts.conflicted++;
-
-    if (file.treeConflict) counts.treeConflicts++;
-    if (file.remoteModified) counts.incoming++;
-  }
-
-  return { files, counts };
+  return Array.from(fileMap.values()).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export function parseSvnLogXml(xml: string): LogEntry[] {
@@ -173,7 +141,10 @@ export function parseSvnLogXml(xml: string): LogEntry[] {
     const author = String(entry.author ?? 'unknown');
     const date = String(entry.date ?? '');
     const msgNode = entry.msg;
-    const message = typeof msgNode === 'string' ? msgNode : String((msgNode as Record<string, unknown>)?.['#text'] ?? '');
+    const message =
+      typeof msgNode === 'string'
+        ? msgNode
+        : String((msgNode as Record<string, unknown>)?.['#text'] ?? '');
 
     const pathsContainer = entry.paths as { path?: Array<Record<string, unknown>> } | undefined;
     const rawPaths = pathsContainer?.path ?? [];
@@ -199,17 +170,12 @@ export function parseSvnLogXml(xml: string): LogEntry[] {
 
 const VALID_FILE_ACTIONS = new Set(['U', 'A', 'D', 'G', 'C', 'E', 'R', ' ']);
 
-export function parseMergeOutput(stdout: string, workingCopyPath?: string): {
-  impacts: MergeFileImpact[];
-  summary: MergeImpactSummary;
-} {
+export function parseMergeOutput(stdout: string, workingCopyPath?: string): SvnMergeImpactItem[] {
   const lines = stdout.split(/\r?\n/);
-  const impacts: MergeFileImpact[] = [];
-  const seen = new Map<string, MergeFileImpact>();
+  const seen = new Map<string, SvnMergeImpactItem>();
 
   for (const rawLine of lines) {
     if (!rawLine || rawLine.length < 5) continue;
-    // Ignore headers / summary lines from svn merge
     if (
       rawLine.startsWith('---') ||
       rawLine.startsWith('Summary of conflicts:') ||
@@ -221,15 +187,10 @@ export function parseMergeOutput(stdout: string, workingCopyPath?: string): {
       continue;
     }
 
-    // Standard svn merge notification format: 4 status columns + 1 space + path
-    // Col 1: File action (U, A, D, G, C, E, R, or space)
-    // Col 2: Property action (U, C, G, or space)
-    // Col 3: Lock ('B' or space)
-    // Col 4: Tree conflict ('C' or space)
     const match = /^([AUDCGER ])([UCG ])([B ])([C ])\s+(.+)$/.exec(rawLine);
     if (!match) continue;
 
-    const col1 = match[1] as MergeFileAction;
+    const col1 = match[1];
     const col2 = match[2];
     const col4 = match[4];
     const rawPath = match[5].trim();
@@ -238,64 +199,41 @@ export function parseMergeOutput(stdout: string, workingCopyPath?: string): {
     if (col1 === ' ' && col2 === ' ' && col4 === ' ') continue;
 
     const normalizedPath = workingCopyPath
-      ? toRelativePosixPath(workingCopyPath, rawPath)
+      ? toPosixRel(workingCopyPath, rawPath)
       : rawPath.split('\\').join('/');
 
     const treeConflict = col4 === 'C';
     const isConflict = col1 === 'C' || col2 === 'C' || treeConflict;
 
-    const impact: MergeFileImpact = {
+    const item: SvnMergeImpactItem = {
       path: normalizedPath,
       fileAction: col1,
       propAction: col2.trim(),
       treeConflict,
       isConflict,
+      isProtected: false,
       rawLine,
     };
 
     const existing = seen.get(normalizedPath);
     if (existing) {
-      existing.treeConflict = existing.treeConflict || impact.treeConflict;
-      existing.isConflict = existing.isConflict || impact.isConflict;
-      if (impact.fileAction !== ' ') existing.fileAction = impact.fileAction;
-      if (impact.propAction) existing.propAction = impact.propAction;
+      existing.treeConflict = existing.treeConflict || item.treeConflict;
+      existing.isConflict = existing.isConflict || item.isConflict;
+      if (item.fileAction !== ' ') existing.fileAction = item.fileAction;
+      if (item.propAction) existing.propAction = item.propAction;
     } else {
-      seen.set(normalizedPath, impact);
-      impacts.push(impact);
+      seen.set(normalizedPath, item);
     }
   }
 
-  const summary: MergeImpactSummary = {
-    total: impacts.length,
-    updated: 0,
-    added: 0,
-    deleted: 0,
-    merged: 0,
-    textConflicts: 0,
-    treeConflicts: 0,
-  };
-
-  for (const impact of impacts) {
-    if (impact.treeConflict) summary.treeConflicts++;
-    if (impact.fileAction === 'C' || impact.propAction === 'C') summary.textConflicts++;
-
-    if (impact.fileAction === 'U') summary.updated++;
-    else if (impact.fileAction === 'A' || impact.fileAction === 'R') summary.added++;
-    else if (impact.fileAction === 'D') summary.deleted++;
-    else if (impact.fileAction === 'G') summary.merged++;
-  }
-
-  return { impacts, summary };
+  return Array.from(seen.values());
 }
 
 export function parseMergeinfoEligible(stdout: string): number[] {
   const revs: number[] = [];
-  const lines = stdout.split(/\r?\n/);
-  for (const line of lines) {
+  for (const line of stdout.split(/\r?\n/)) {
     const match = /^r?(\d+)\*?$/.exec(line.trim());
-    if (match) {
-      revs.push(Number(match[1]));
-    }
+    if (match) revs.push(Number(match[1]));
   }
   return revs.sort((a, b) => a - b);
 }

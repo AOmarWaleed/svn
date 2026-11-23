@@ -55,6 +55,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             )}
             <span className="flex-1 leading-snug">{item.message}</span>
             <button
+              type="button"
               onClick={() => dismiss(item.id)}
               className="text-slate-400 hover:text-white shrink-0"
             >

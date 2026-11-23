@@ -1,28 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { Send, X, AlertTriangle, Loader2 } from 'lucide-react';
-import type { BranchStatus } from '../../../shared/types';
+import type { EnvModuleStatus, ModuleMapping } from '../../../shared/types';
 import { api } from '../api/client';
 import { useI18n } from '../i18n/I18nContext';
 import { DiffViewer } from './DiffViewer';
 import { useToast } from './ToastContext';
 
-interface CommitModalProps {
+interface ModuleCommitModalProps {
   open: boolean;
-  branch: BranchStatus | null;
+  module: ModuleMapping | null;
+  envLabel: string;
+  status: EnvModuleStatus | null;
   initialMessage?: string;
   onClose: () => void;
   onCommitted: () => void;
 }
 
-export const CommitModal: React.FC<CommitModalProps> = ({
+export const ModuleCommitModal: React.FC<ModuleCommitModalProps> = ({
   open,
-  branch,
+  module,
+  envLabel,
+  status,
   initialMessage = '',
   onClose,
   onCommitted,
 }) => {
   const { t } = useI18n();
   const { toast } = useToast();
+
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState(initialMessage);
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -30,33 +35,33 @@ export const CommitModal: React.FC<CommitModalProps> = ({
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const committableFiles = (branch?.files ?? []).filter((f) => f.status !== 'normal');
+  const files = status?.files ?? [];
 
   useEffect(() => {
-    if (open && branch) {
-      const initSel: Record<string, boolean> = {};
-      for (const f of branch.files) {
-        if (f.status !== 'normal' && f.status !== 'conflicted' && !f.treeConflict) {
-          initSel[f.path] = true;
-        }
+    if (open && status) {
+      const sel: Record<string, boolean> = {};
+      for (const f of status.files) {
+        if (f.status !== 'conflicted' && !f.treeConflict) sel[f.path] = true;
       }
-      setSelected(initSel);
-      setMessage(initialMessage);
-      const first = branch.files.find((f) => f.status !== 'normal');
-      setActiveFile(first ? first.path : null);
+      setSelected(sel);
+      setMessage(
+        initialMessage ||
+          (module ? `Update ${module.name} in ${envLabel}` : '')
+      );
+      setActiveFile(status.files[0]?.path ?? null);
       setDiffText('');
     }
-  }, [open, branch, initialMessage]);
+  }, [open, status, module, envLabel, initialMessage]);
 
   useEffect(() => {
-    if (!open || !branch || !activeFile) {
+    if (!open || !module || !status || !activeFile) {
       setDiffText('');
       return;
     }
     let cancelled = false;
     setLoadingDiff(true);
     api
-      .getDiff(branch.branchId, activeFile)
+      .getModuleDiff(module.id, status.envId, activeFile)
       .then((res) => {
         if (!cancelled) setDiffText(res.diff);
       })
@@ -69,23 +74,23 @@ export const CommitModal: React.FC<CommitModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, branch, activeFile]);
+  }, [open, module, status, activeFile]);
 
-  if (!open || !branch) return null;
+  if (!open || !module || !status) return null;
 
-  const chosenPaths = committableFiles
+  const chosen = files
     .filter((f) => selected[f.path] && f.status !== 'conflicted' && !f.treeConflict)
     .map((f) => f.path);
 
   const handleCommit = async () => {
-    if (!message.trim() || chosenPaths.length === 0) return;
+    if (!message.trim() || chosen.length === 0) return;
     setSubmitting(true);
     try {
-      const res = await api.commitBranch(branch.branchId, chosenPaths, message.trim());
+      const res = await api.commitModuleEnv(module.id, status.envId, chosen, message.trim());
       toast(
         res.newRevision
-          ? `Committed revision r${res.newRevision}`
-          : 'Changes committed successfully',
+          ? `Committed ${module.name} (${envLabel}) at r${res.newRevision}`
+          : `Committed ${module.name}`,
         'success'
       );
       onCommitted();
@@ -102,36 +107,42 @@ export const CommitModal: React.FC<CommitModalProps> = ({
       <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              {t('commitModalTitle')} — <span dir="ltr" className="font-mono text-indigo-400">{branch.name}</span>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              {t('commitModalTitle')} —{' '}
+              <span dir="ltr" className="font-mono text-indigo-400">
+                {module.name} ({envLabel})
+              </span>
             </h2>
+            <div dir="ltr" className="text-xs font-mono text-slate-500 mt-0.5">
+              {status.relativePath}
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-5 flex flex-col gap-3">
+          <div className="lg:col-span-5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {t('selectFilesToCommit')} ({chosenPaths.length}/{committableFiles.length})
+              <span className="text-xs font-bold text-slate-500 uppercase">
+                {t('selectFilesToCommit')} ({chosen.length}/{files.length})
               </span>
               <div className="flex gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => {
                     const next: Record<string, boolean> = {};
-                    committableFiles.forEach((f) => {
+                    files.forEach((f) => {
                       if (f.status !== 'conflicted' && !f.treeConflict) next[f.path] = true;
                     });
                     setSelected(next);
                   }}
-                  className="text-indigo-500 hover:underline"
+                  className="text-indigo-400 hover:underline"
                 >
                   {t('selectAll')}
                 </button>
@@ -145,51 +156,49 @@ export const CommitModal: React.FC<CommitModalProps> = ({
               </div>
             </div>
 
-            {committableFiles.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-6 text-center text-sm text-slate-500">
+            {files.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">
                 {t('noChangesToCommit')}
               </div>
             ) : (
-              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
-                {committableFiles.map((f) => {
-                  const isConflicted = f.status === 'conflicted' || f.treeConflict;
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
+                {files.map((f) => {
+                  const isConf = f.status === 'conflicted' || f.treeConflict;
                   return (
                     <div
                       key={f.path}
                       onClick={() => setActiveFile(f.path)}
-                      className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${
                         activeFile === f.path
-                          ? 'bg-indigo-50 dark:bg-indigo-950/50'
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60'
                           : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
                     >
                       <input
                         type="checkbox"
-                        disabled={isConflicted}
+                        disabled={isConf}
                         checked={Boolean(selected[f.path])}
                         onChange={(e) => {
                           e.stopPropagation();
-                          setSelected((prev) => ({ ...prev, [f.path]: e.target.checked }));
+                          setSelected((p) => ({ ...p, [f.path]: e.target.checked }));
                         }}
                         className="rounded border-slate-400 text-indigo-600"
                       />
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          isConflicted
+                          isConf
                             ? 'bg-rose-500/20 text-rose-400'
-                            : f.status === 'added'
+                            : f.status === 'unversioned' || f.status === 'added'
                               ? 'bg-emerald-500/20 text-emerald-400'
-                              : f.status === 'deleted'
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-sky-500/20 text-sky-400'
+                              : 'bg-sky-500/20 text-sky-400'
                         }`}
                       >
                         {f.status}
                       </span>
-                      <span dir="ltr" className="text-xs font-mono truncate flex-1 text-slate-800 dark:text-slate-200">
+                      <span dir="ltr" className="text-xs font-mono truncate flex-1">
                         {f.path}
                       </span>
-                      {isConflicted && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                      {isConf && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
                     </div>
                   );
                 })}
@@ -197,7 +206,7 @@ export const CommitModal: React.FC<CommitModalProps> = ({
             )}
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
                 {t('commitMessageLabel')}
               </label>
               <textarea
@@ -205,23 +214,17 @@ export const CommitModal: React.FC<CommitModalProps> = ({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder={t('commitMessagePlaceholder')}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm"
               />
             </div>
           </div>
 
-          <div className="lg:col-span-7 flex flex-col gap-2 min-w-0">
-            <div className="text-xs font-semibold text-slate-500">
-              {activeFile ? (
-                <span dir="ltr" className="font-mono text-slate-700 dark:text-slate-300">
-                  {activeFile}
-                </span>
-              ) : (
-                t('clickFileToPreviewDiff')
-              )}
+          <div className="lg:col-span-7 min-w-0 space-y-2">
+            <div dir="ltr" className="text-xs font-mono text-slate-400 truncate">
+              {activeFile || 'Select a file'}
             </div>
             {loadingDiff ? (
-              <div className="flex items-center justify-center h-64 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="h-64 flex items-center justify-center rounded-xl border border-slate-800">
                 <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
               </div>
             ) : (
@@ -230,25 +233,21 @@ export const CommitModal: React.FC<CommitModalProps> = ({
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200"
+            className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-medium"
           >
             {t('btnCancel')}
           </button>
           <button
             type="button"
-            disabled={submitting || chosenPaths.length === 0 || !message.trim()}
+            disabled={submitting || chosen.length === 0 || !message.trim()}
             onClick={handleCommit}
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold disabled:opacity-50"
           >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {submitting ? t('committing') : t('btnCommitSelected')}
           </button>
         </div>

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { getOperationHistory } from '../config/store';
 import {
   clearCommandLogs,
   getCommandLogs,
@@ -19,8 +18,4 @@ logsRouter.get('/stream', (req, res) => {
 logsRouter.delete('/', (_req, res) => {
   clearCommandLogs();
   res.json({ ok: true });
-});
-
-logsRouter.get('/history', (_req, res) => {
-  res.json(getOperationHistory());
 });

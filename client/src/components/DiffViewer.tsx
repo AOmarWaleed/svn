@@ -73,15 +73,10 @@ function toSplitRows(lines: ParsedDiffLine[]): SplitRow[] {
       i++;
       continue;
     }
-    // Pair consecutive deletions with consecutive additions
     const dels: ParsedDiffLine[] = [];
     const adds: ParsedDiffLine[] = [];
-    while (i < lines.length && lines[i].type === 'del') {
-      dels.push(lines[i++]);
-    }
-    while (i < lines.length && lines[i].type === 'add') {
-      adds.push(lines[i++]);
-    }
+    while (i < lines.length && lines[i].type === 'del') dels.push(lines[i++]);
+    while (i < lines.length && lines[i].type === 'add') adds.push(lines[i++]);
     const maxLen = Math.max(dels.length, adds.length);
     for (let k = 0; k < maxLen; k++) {
       rows.push({ left: dels[k], right: adds[k] });
@@ -93,7 +88,7 @@ function toSplitRows(lines: ParsedDiffLine[]): SplitRow[] {
 export const DiffViewer: React.FC<DiffViewerProps> = ({
   diffText,
   emptyText,
-  maxHeightClass = 'max-h-[540px]',
+  maxHeightClass = 'max-h-[480px]',
 }) => {
   const { t } = useI18n();
   const [viewMode, setViewMode] = useState<'unified' | 'split'>('unified');
@@ -120,7 +115,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('unified')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
               viewMode === 'unified'
                 ? 'bg-indigo-600 text-white'
                 : 'text-slate-300 hover:text-white'
@@ -132,7 +127,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('split')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
               viewMode === 'split'
                 ? 'bg-indigo-600 text-white'
                 : 'text-slate-300 hover:text-white'
@@ -194,7 +189,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                       <td
                         colSpan={4}
                         className={`px-3 py-0.5 whitespace-pre ${
-                          row.fullHeader.type === 'hunk' ? 'text-sky-300' : 'text-slate-400 font-semibold'
+                          row.fullHeader.type === 'hunk'
+                            ? 'text-sky-300'
+                            : 'text-slate-400 font-semibold'
                         }`}
                       >
                         {row.fullHeader.text}
@@ -206,20 +203,30 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                 const leftCls =
                   row.left?.type === 'del' ? 'bg-rose-950/45 text-rose-300' : 'text-slate-300';
                 const rightCls =
-                  row.right?.type === 'add' ? 'bg-emerald-950/45 text-emerald-300' : 'text-slate-300';
+                  row.right?.type === 'add'
+                    ? 'bg-emerald-950/45 text-emerald-300'
+                    : 'text-slate-300';
 
                 return (
                   <tr key={idx} className="border-b border-slate-900/40">
-                    <td className={`w-10 select-none px-2 text-right text-slate-600 border-r border-slate-800/60 ${leftCls}`}>
+                    <td
+                      className={`w-10 select-none px-2 text-right text-slate-600 border-r border-slate-800/60 ${leftCls}`}
+                    >
                       {row.left?.oldNum ?? ''}
                     </td>
-                    <td className={`w-1/2 px-2 whitespace-pre overflow-hidden text-ellipsis border-r border-slate-800 ${leftCls}`}>
+                    <td
+                      className={`w-1/2 px-2 whitespace-pre overflow-hidden text-ellipsis border-r border-slate-800 ${leftCls}`}
+                    >
                       {row.left?.text ?? ''}
                     </td>
-                    <td className={`w-10 select-none px-2 text-right text-slate-600 border-r border-slate-800/60 ${rightCls}`}>
+                    <td
+                      className={`w-10 select-none px-2 text-right text-slate-600 border-r border-slate-800/60 ${rightCls}`}
+                    >
                       {row.right?.newNum ?? ''}
                     </td>
-                    <td className={`w-1/2 px-2 whitespace-pre overflow-hidden text-ellipsis ${rightCls}`}>
+                    <td
+                      className={`w-1/2 px-2 whitespace-pre overflow-hidden text-ellipsis ${rightCls}`}
+                    >
                       {row.right?.text ?? ''}
                     </td>
                   </tr>

@@ -7,8 +7,10 @@ import {
   testSvnExecutable,
   updateSettings,
 } from '../config/store';
-import { getDemoProvider } from '../providers/providerManager';
+import { clearAllTrackedConflicts } from '../engines/conflictTracker';
+import { ensureSampleRepoInitialized, resetSampleRepo } from '../sample/sampleRcmBuilder';
 import { clearCommandLogs, recordInstantCommandLog } from '../utils/commandLogger';
+import { detectVsCodePath } from '../utils/vscodeLauncher';
 
 export const settingsRouter = Router();
 
@@ -20,9 +22,12 @@ settingsRouter.put('/', async (req, res, next) => {
   try {
     const payload = (req.body ?? {}) as UpdateSettingsPayload;
     const updated = await updateSettings(payload);
+    if (updated.mode === 'sample') {
+      await ensureSampleRepoInitialized();
+    }
     await appendOperationHistory({
       action: 'settings.update',
-      details: `Updated settings (mode: ${updated.mode})`,
+      details: `Updated settings (mode: ${updated.mode}, root: ${updated.activeRepoRoot})`,
       status: 'success',
     });
     res.json(updated);
@@ -34,33 +39,50 @@ settingsRouter.put('/', async (req, res, next) => {
 settingsRouter.post('/test-svn', async (req, res, next) => {
   try {
     const svnPath = String(req.body?.svnPath ?? '').trim() || 'svn';
-    const result = await testSvnExecutable(svnPath);
-    const detected = await detectInstalledSvnPaths();
+    const [result, detected] = await Promise.all([
+      testSvnExecutable(svnPath),
+      detectInstalledSvnPaths(),
+    ]);
     res.json({ ...result, detectedSvnPaths: detected });
   } catch (err) {
     next(err);
   }
 });
 
-export async function resetDemoHandler(_req: express.Request, res: express.Response, next: express.NextFunction): Promise<void> {
+settingsRouter.post('/test-vscode', async (_req, res, next) => {
   try {
-    getDemoProvider().resetDemo();
+    const vscodePath = await detectVsCodePath();
+    res.json({
+      available: Boolean(vscodePath),
+      vscodePath,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+export async function resetSampleHandler(
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): Promise<void> {
+  try {
+    clearAllTrackedConflicts();
+    const root = await resetSampleRepo();
     clearCommandLogs();
     recordInstantCommandLog({
-      command: 'demo reset --restore-initial-state',
+      command: `sample-rcm reset "${root}"`,
       status: 'success',
-      output: 'Demo sandbox reset to initial 4 branches and unmerged feature commits.',
-      durationMs: 25,
+      output: 'Sample RCM repository restored cleanly to initial r7425 state.',
+      durationMs: 40,
     });
     await appendOperationHistory({
-      action: 'demo.reset',
-      details: 'Reset Demo Sandbox to initial state',
+      action: 'sample.reset',
+      details: 'Reset Sample RCM repository on disk to initial state',
       status: 'success',
     });
-    res.json({ ok: true });
+    res.json({ ok: true, sampleRepoRoot: root });
   } catch (err) {
     next(err);
   }
 }
-
-settingsRouter.post('/demo/reset', resetDemoHandler);

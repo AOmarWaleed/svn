@@ -13,9 +13,6 @@ const node_crypto_1 = require("node:crypto");
 const MAX_LOGS = 500;
 const logs = [];
 const sseClients = new Set();
-/**
- * Redacts passwords from CLI argument arrays before logging.
- */
 function redactArgs(args) {
     const out = [];
     for (let i = 0; i < args.length; i++) {
@@ -61,8 +58,8 @@ function startCommandLog(opts) {
     const entry = {
         id,
         timestamp: new Date().toISOString(),
-        branchId: opts.branchId,
-        branchName: opts.branchName,
+        moduleId: opts.moduleId,
+        moduleName: opts.moduleName,
         command: opts.command,
         status: 'running',
         output: '',
@@ -95,8 +92,8 @@ function recordInstantCommandLog(opts) {
     const entry = {
         id: (0, node_crypto_1.randomUUID)(),
         timestamp: new Date().toISOString(),
-        branchId: opts.branchId,
-        branchName: opts.branchName,
+        moduleId: opts.moduleId,
+        moduleName: opts.moduleName,
         command: opts.command,
         status: opts.status,
         output: opts.output,
@@ -127,7 +124,6 @@ function subscribeCommandLogsSse(req, res) {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
     sseClients.add(res);
-    // Send initial snapshot of recent logs
     res.write(`event: snapshot\ndata: ${JSON.stringify(logs.slice(-100))}\n\n`);
     const heartbeat = setInterval(() => {
         try {

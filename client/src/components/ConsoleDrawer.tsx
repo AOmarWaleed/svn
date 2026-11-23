@@ -1,5 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Terminal, ChevronUp, ChevronDown, Trash2, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import {
+  Terminal,
+  ChevronUp,
+  ChevronDown,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
 import type { CommandLogEntry } from '../../../shared/types';
 import { api } from '../api/client';
 import { useI18n } from '../i18n/I18nContext';
@@ -16,10 +24,9 @@ export const ConsoleDrawer: React.FC = () => {
 
     es.addEventListener('snapshot', (ev) => {
       try {
-        const data = JSON.parse((ev as MessageEvent).data) as CommandLogEntry[];
-        setLogs(data);
+        setLogs(JSON.parse((ev as MessageEvent).data) as CommandLogEntry[]);
       } catch {
-        // ignore parse error
+        // ignore
       }
     });
 
@@ -40,10 +47,7 @@ export const ConsoleDrawer: React.FC = () => {
       }
     });
 
-    es.addEventListener('clear', () => {
-      setLogs([]);
-    });
-
+    es.addEventListener('clear', () => setLogs([]));
     return () => es.close();
   }, []);
 
@@ -52,10 +56,6 @@ export const ConsoleDrawer: React.FC = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [logs, open]);
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
 
   const handleClear = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -74,7 +74,7 @@ export const ConsoleDrawer: React.FC = () => {
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') setOpen((o) => !o);
         }}
-        className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors select-none"
+        className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 select-none"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <Terminal className="w-4 h-4 text-indigo-500 shrink-0" />
@@ -99,7 +99,7 @@ export const ConsoleDrawer: React.FC = () => {
             <button
               type="button"
               onClick={handleClear}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-rose-500 hover:bg-rose-500/10"
             >
               <Trash2 className="w-3.5 h-3.5" />
               {t('consoleClear')}
@@ -130,7 +130,10 @@ export const ConsoleDrawer: React.FC = () => {
                   className="rounded-lg border border-slate-800/80 bg-slate-900/70 px-3 py-2"
                 >
                   <div
-                    onClick={() => entry.output && toggleExpand(entry.id)}
+                    onClick={() =>
+                      entry.output &&
+                      setExpandedIds((p) => ({ ...p, [entry.id]: !isExpanded }))
+                    }
                     className="flex items-center justify-between gap-2 cursor-pointer"
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -141,9 +144,9 @@ export const ConsoleDrawer: React.FC = () => {
                       ) : (
                         <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                       )}
-                      {entry.branchName && (
+                      {entry.moduleName && (
                         <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[11px] shrink-0">
-                          {entry.branchName}
+                          {entry.moduleName}
                         </span>
                       )}
                       <span className="text-slate-200 truncate">{entry.command}</span>

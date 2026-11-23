@@ -1,0 +1,163 @@
+import type { EnvConfig, ModuleMapping } from '../../../shared/types';
+
+export const DEFAULT_ENVS: EnvConfig[] = [
+  {
+    id: 'master',
+    label: 'MASTER (Root)',
+    basePath: '',
+    color: '#10b981',
+    isMaster: true,
+  },
+  {
+    id: 'dev',
+    label: 'DEV',
+    basePath: 'BRANCHES/DEV',
+    color: '#6366f1',
+    isMaster: false,
+  },
+  {
+    id: 'test',
+    label: 'TEST',
+    basePath: 'BRANCHES/TEST',
+    color: '#f59e0b',
+    isMaster: false,
+  },
+];
+
+export const DEFAULT_MODULES: ModuleMapping[] = [
+  {
+    id: 'billing-backend',
+    name: 'Billing Backend (API)',
+    category: 'Billing',
+    paths: {
+      master: 'billing/rcm-api',
+      dev: 'BRANCHES/DEV/billing/backend',
+      test: 'BRANCHES/TEST/billing/backend',
+    },
+  },
+  {
+    id: 'billing-frontend',
+    name: 'Billing Frontend',
+    category: 'Billing',
+    paths: {
+      master: 'billing/rcm-frontend',
+      dev: 'BRANCHES/DEV/billing/frontend',
+      test: 'BRANCHES/TEST/billing/frontend',
+    },
+  },
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    category: 'Core',
+    paths: {
+      master: 'dashboard',
+      dev: 'BRANCHES/DEV/dashboard',
+      test: 'BRANCHES/TEST/dashboard',
+    },
+  },
+  {
+    id: 'db',
+    name: 'Database Scripts',
+    category: 'Core',
+    paths: {
+      master: 'db',
+      dev: 'BRANCHES/DEV/db',
+      test: 'BRANCHES/TEST/db',
+    },
+  },
+  {
+    id: 'heartbeat-monitoring',
+    name: 'Heartbeat Monitoring',
+    category: 'Infra',
+    paths: {
+      master: 'heartbeat-monitoring',
+      dev: 'BRANCHES/DEV/heartbeat-monitoring',
+      test: 'BRANCHES/TEST/heartbeat-monitoring',
+    },
+  },
+  {
+    id: 'his-integration',
+    name: 'HIS Integration',
+    category: 'Integrations',
+    paths: {
+      master: 'HIS-Integration',
+      dev: 'BRANCHES/DEV/his-integration',
+      test: 'BRANCHES/TEST/his-integration',
+    },
+  },
+  {
+    id: 'his-rcm-integration',
+    name: 'HIS-RCM Integration',
+    category: 'Integrations',
+    paths: {
+      master: 'his-rcm-integration',
+      dev: 'BRANCHES/DEV/his-rcm-integration',
+      test: 'BRANCHES/TEST/his-rcm-integration',
+    },
+  },
+  {
+    id: 'main-frontend',
+    name: 'Main Frontend',
+    category: 'Core',
+    paths: {
+      master: 'main-frontend',
+      dev: 'BRANCHES/DEV/main-frontend',
+      test: 'BRANCHES/TEST/main-frontend',
+    },
+  },
+  {
+    id: 'nphies',
+    name: 'NPHIES',
+    category: 'Integrations',
+    paths: {
+      master: 'nphies',
+      dev: 'BRANCHES/DEV/nphies',
+      test: 'BRANCHES/TEST/nphies',
+    },
+  },
+  {
+    id: 'oasis-integration',
+    name: 'OASIS Integration',
+    category: 'Integrations',
+    paths: {
+      master: 'oasis-integration',
+      dev: 'BRANCHES/DEV/oasis-integration',
+      test: 'BRANCHES/TEST/oasis-integration',
+    },
+  },
+  {
+    id: 'shared-common',
+    name: 'Shared / Common',
+    category: 'Core',
+    paths: {
+      master: 'common',
+      dev: 'BRANCHES/DEV/shared',
+      test: 'BRANCHES/TEST/shared',
+    },
+  },
+];
+
+export const DEFAULT_IGNORE_PATTERNS: string[] = [
+  '.svn',
+  '.git',
+  'node_modules',
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  'bin',
+  'obj',
+  'coverage',
+  'logs',
+  '*.log',
+  '.DS_Store',
+  'Thumbs.db',
+];
+
+export const DEFAULT_PROTECTED_PATTERNS: string[] = [
+  '.env',
+  '.env.*',
+  'appsettings.*.json',
+  'web.config',
+  'env/*',
+];

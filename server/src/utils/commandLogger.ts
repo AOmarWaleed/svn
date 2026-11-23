@@ -6,9 +6,6 @@ const MAX_LOGS = 500;
 const logs: CommandLogEntry[] = [];
 const sseClients = new Set<Response>();
 
-/**
- * Redacts passwords from CLI argument arrays before logging.
- */
 export function redactArgs(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -27,7 +24,8 @@ export function redactArgs(args: string[]): string[] {
 
 export function formatCommandLine(executable: string, args: string[]): string {
   const safeArgs = redactArgs(args).map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg));
-  const exeName = executable.includes('\\') || executable.includes('/') ? `"${executable}"` : executable;
+  const exeName =
+    executable.includes('\\') || executable.includes('/') ? `"${executable}"` : executable;
   return `${exeName} ${safeArgs.join(' ')}`.trim();
 }
 
@@ -51,16 +49,16 @@ function pushEntry(entry: CommandLogEntry): void {
 }
 
 export function startCommandLog(opts: {
-  branchId?: string;
-  branchName?: string;
+  moduleId?: string;
+  moduleName?: string;
   command: string;
 }): string {
   const id = randomUUID();
   const entry: CommandLogEntry = {
     id,
     timestamp: new Date().toISOString(),
-    branchId: opts.branchId,
-    branchName: opts.branchName,
+    moduleId: opts.moduleId,
+    moduleName: opts.moduleName,
     command: opts.command,
     status: 'running',
     output: '',
@@ -96,8 +94,8 @@ export function finishCommandLog(
 }
 
 export function recordInstantCommandLog(opts: {
-  branchId?: string;
-  branchName?: string;
+  moduleId?: string;
+  moduleName?: string;
   command: string;
   status: 'success' | 'error';
   output: string;
@@ -106,8 +104,8 @@ export function recordInstantCommandLog(opts: {
   const entry: CommandLogEntry = {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
-    branchId: opts.branchId,
-    branchName: opts.branchName,
+    moduleId: opts.moduleId,
+    moduleName: opts.moduleName,
     command: opts.command,
     status: opts.status,
     output: opts.output,
@@ -141,8 +139,6 @@ export function subscribeCommandLogsSse(req: Request, res: Response): void {
   res.flushHeaders?.();
 
   sseClients.add(res);
-
-  // Send initial snapshot of recent logs
   res.write(`event: snapshot\ndata: ${JSON.stringify(logs.slice(-100))}\n\n`);
 
   const heartbeat = setInterval(() => {

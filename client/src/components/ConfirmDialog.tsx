@@ -32,9 +32,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="flex items-start gap-3">
           <div
             className={`p-2.5 rounded-xl shrink-0 ${
-              danger
-                ? 'bg-rose-500/15 text-rose-500'
-                : 'bg-amber-500/15 text-amber-500'
+              danger ? 'bg-rose-500/15 text-rose-500' : 'bg-amber-500/15 text-amber-500'
             }`}
           >
             <AlertTriangle className="w-5 h-5" />
@@ -52,7 +50,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             disabled={busy}
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl text-sm font-medium border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="px-4 py-2 rounded-xl text-sm font-medium border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             {t('btnCancel')}
           </button>
@@ -60,10 +58,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 ${
-              danger
-                ? 'bg-rose-600 hover:bg-rose-500'
-                : 'bg-indigo-600 hover:bg-indigo-500'
+            className={`px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 ${
+              danger ? 'bg-rose-600 hover:bg-rose-500' : 'bg-indigo-600 hover:bg-indigo-500'
             }`}
           >
             {confirmLabel ?? t('btnConfirm')}

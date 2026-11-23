@@ -1,19 +1,18 @@
 import type {
-  BranchConfig,
-  BranchStatus,
+  ActiveConflictItem,
   CommandLogEntry,
-  ConflictFileDetail,
-  ConflictListItem,
-  ConflictQuickStrategy,
+  DiscoveredFolder,
   HealthInfo,
   LogEntry,
-  MergeExecuteResult,
-  MergeMode,
-  MergePreviewResult,
+  ModuleApplyPlan,
+  ModuleEligibleInfo,
+  ModuleMapping,
   OperationHistoryEntry,
-  PreflightResult,
   PublicAppSettings,
-  ScannedWorkingCopy,
+  RepoOverview,
+  TransferApplyResponse,
+  TransferEngine,
+  TransferPreviewResponse,
   UpdateSettingsPayload,
 } from '../../../shared/types';
 
@@ -38,7 +37,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const errMsg =
-      (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
+      (data &&
+      typeof data === 'object' &&
+      'error' in data &&
+      typeof (data as { error: unknown }).error === 'string'
         ? (data as { error: string }).error
         : null) || `${res.status} ${res.statusText}`;
     throw new Error(errMsg);
@@ -56,7 +58,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  testSvnPath: (svnPath: string) =>
+  testSvn: (svnPath: string) =>
     requestJson<{
       available: boolean;
       version: string | null;
@@ -66,143 +68,140 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ svnPath }),
     }),
-  resetDemo: () =>
-    requestJson<{ ok: boolean }>('/api/demo/reset', {
+  testVsCode: () =>
+    requestJson<{ available: boolean; vscodePath: string | null }>(
+      '/api/settings/test-vscode',
+      { method: 'POST' }
+    ),
+  resetSampleRepo: () =>
+    requestJson<{ ok: boolean; sampleRepoRoot: string }>('/api/sample/reset', {
       method: 'POST',
     }),
 
-  getBranches: () => requestJson<BranchConfig[]>('/api/branches'),
-  addBranch: (payload: { name: string; path: string; isMaster?: boolean; color?: string }) =>
-    requestJson<BranchConfig>('/api/branches', {
+  getOverview: () => requestJson<RepoOverview>('/api/overview'),
+
+  getModules: () => requestJson<ModuleMapping[]>('/api/modules'),
+  addModule: (payload: { name: string; category?: string; paths: Record<string, string> }) =>
+    requestJson<ModuleMapping>('/api/modules', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  removeBranch: (id: string) =>
-    requestJson<{ ok: boolean }>(`/api/branches/${encodeURIComponent(id)}`, {
+  updateModule: (id: string, payload: Partial<Omit<ModuleMapping, 'id'>>) =>
+    requestJson<ModuleMapping>(`/api/modules/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteModule: (id: string) =>
+    requestJson<{ ok: boolean }>(`/api/modules/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
-  setMasterBranch: (id: string) =>
-    requestJson<BranchConfig[]>(`/api/branches/${encodeURIComponent(id)}/set-master`, {
-      method: 'POST',
-    }),
-  scanBranches: (rootDir: string) =>
-    requestJson<ScannedWorkingCopy[]>('/api/branches/scan', {
-      method: 'POST',
-      body: JSON.stringify({ rootDir }),
-    }),
+  discoverFolders: () =>
+    requestJson<DiscoveredFolder[]>('/api/modules/discover', { method: 'POST' }),
 
-  getAllStatus: (remote = false) =>
-    requestJson<BranchStatus[]>(`/api/svn/status-all?remote=${remote ? 'true' : 'false'}`),
-  getBranchStatus: (branchId: string, remote = false) =>
-    requestJson<BranchStatus>(
-      `/api/svn/${encodeURIComponent(branchId)}/status?remote=${remote ? 'true' : 'false'}`
-    ),
-  updateAll: () =>
-    requestJson<{ results: Array<{ branchId: string; branchName: string; ok: boolean; error?: string }> }>(
-      '/api/svn/update-all',
+  updateModuleEnv: (moduleId: string, envId: string) =>
+    requestJson<{ output: string }>(
+      `/api/module/${encodeURIComponent(moduleId)}/${encodeURIComponent(envId)}/update`,
       { method: 'POST' }
     ),
-  updateBranch: (branchId: string) =>
-    requestJson<{ output: string; newRevision: number }>(
-      `/api/svn/${encodeURIComponent(branchId)}/update`,
-      { method: 'POST' }
-    ),
-  commitBranch: (branchId: string, files: string[], message: string) =>
+  commitModuleEnv: (moduleId: string, envId: string, files: string[], message: string) =>
     requestJson<{ output: string; newRevision?: number }>(
-      `/api/svn/${encodeURIComponent(branchId)}/commit`,
+      `/api/module/${encodeURIComponent(moduleId)}/${encodeURIComponent(envId)}/commit`,
       {
         method: 'POST',
         body: JSON.stringify({ files, message }),
       }
     ),
-  getDiff: (branchId: string, file?: string, rev?: number) => {
-    const params = new URLSearchParams();
-    if (file) params.set('file', file);
-    if (rev !== undefined) params.set('rev', String(rev));
-    const qs = params.toString();
-    return requestJson<{ diff: string }>(
-      `/api/svn/${encodeURIComponent(branchId)}/diff${qs ? `?${qs}` : ''}`
-    );
-  },
-  getLog: (branchId: string, limit = 30) =>
-    requestJson<LogEntry[]>(`/api/svn/${encodeURIComponent(branchId)}/log?limit=${limit}`),
-  revertBranch: (branchId: string, files?: string[]) =>
-    requestJson<{ output: string }>(`/api/svn/${encodeURIComponent(branchId)}/revert`, {
-      method: 'POST',
-      body: JSON.stringify({ files }),
-    }),
-  cleanupBranch: (branchId: string) =>
-    requestJson<{ output: string }>(`/api/svn/${encodeURIComponent(branchId)}/cleanup`, {
-      method: 'POST',
-    }),
-
-  getEligibleRevisions: (sourceId: string, targetId: string) =>
-    requestJson<LogEntry[]>(
-      `/api/merge/eligible?sourceId=${encodeURIComponent(sourceId)}&targetId=${encodeURIComponent(targetId)}`
-    ),
-  preflightMerge: (sourceId: string, targetId: string) =>
-    requestJson<PreflightResult>('/api/merge/preflight', {
-      method: 'POST',
-      body: JSON.stringify({ sourceId, targetId }),
-    }),
-  testMerge: (sourceId: string, targetId: string, mode: MergeMode, revisions: number[] = []) =>
-    requestJson<MergePreviewResult>('/api/merge/test', {
-      method: 'POST',
-      body: JSON.stringify({ sourceId, targetId, mode, revisions }),
-    }),
-  getMergeFileDiff: (
-    sourceId: string,
-    targetId: string,
-    filePath: string,
-    revisions: number[] = []
-  ) =>
-    requestJson<{ diff: string }>('/api/merge/preview-diff', {
-      method: 'POST',
-      body: JSON.stringify({ sourceId, targetId, filePath, revisions }),
-    }),
-  confirmMerge: (sourceId: string, targetId: string, mode: MergeMode, revisions: number[] = []) =>
-    requestJson<MergeExecuteResult>('/api/merge/confirm', {
-      method: 'POST',
-      body: JSON.stringify({ sourceId, targetId, mode, revisions }),
-    }),
-  rollbackMerge: (targetId: string) =>
-    requestJson<{ output: string }>('/api/merge/rollback', {
-      method: 'POST',
-      body: JSON.stringify({ targetId }),
-    }),
-
-  listAllConflicts: () => requestJson<ConflictListItem[]>('/api/conflicts'),
-  getConflictDetail: (branchId: string, file: string) =>
-    requestJson<ConflictFileDetail>(
-      `/api/conflicts/${encodeURIComponent(branchId)}/detail?file=${encodeURIComponent(file)}`
-    ),
-  saveAndResolveConflict: (branchId: string, filePath: string, resolvedContent: string) =>
-    requestJson<{ output: string }>(`/api/conflicts/${encodeURIComponent(branchId)}/save-resolve`, {
-      method: 'POST',
-      body: JSON.stringify({ filePath, resolvedContent }),
-    }),
-  quickResolveConflict: (
-    branchId: string,
-    filePath: string,
-    strategy: ConflictQuickStrategy
-  ) =>
+  revertModuleEnv: (moduleId: string, envId: string, files?: string[]) =>
     requestJson<{ output: string }>(
-      `/api/conflicts/${encodeURIComponent(branchId)}/quick-resolve`,
+      `/api/module/${encodeURIComponent(moduleId)}/${encodeURIComponent(envId)}/revert`,
       {
         method: 'POST',
-        body: JSON.stringify({ filePath, strategy }),
+        body: JSON.stringify({ files }),
+      }
+    ),
+  getModuleDiff: (moduleId: string, envId: string, file?: string) =>
+    requestJson<{ diff: string }>(
+      `/api/module/${encodeURIComponent(moduleId)}/${encodeURIComponent(envId)}/diff${
+        file ? `?file=${encodeURIComponent(file)}` : ''
+      }`
+    ),
+  getModuleLog: (moduleId: string, envId: string, limit = 30) =>
+    requestJson<LogEntry[]>(
+      `/api/module/${encodeURIComponent(moduleId)}/${encodeURIComponent(envId)}/log?limit=${limit}`
+    ),
+
+  getEligibleRevisions: (sourceEnvId: string, targetEnvId: string, moduleIds: string[]) =>
+    requestJson<ModuleEligibleInfo[]>('/api/transfer/eligible', {
+      method: 'POST',
+      body: JSON.stringify({ sourceEnvId, targetEnvId, moduleIds }),
+    }),
+  previewTransfer: (payload: {
+    engine: TransferEngine;
+    sourceEnvId: string;
+    targetEnvId: string;
+    moduleIds: string[];
+    ignoreAncestry?: boolean;
+    revisionsByModule?: Record<string, number[]>;
+  }) =>
+    requestJson<TransferPreviewResponse>('/api/transfer/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  applyTransfer: (payload: {
+    engine: TransferEngine;
+    sourceEnvId: string;
+    targetEnvId: string;
+    moduleIds: string[];
+    modulePlans?: ModuleApplyPlan[];
+    ignoreAncestry?: boolean;
+    revisionsByModule?: Record<string, number[]>;
+  }) =>
+    requestJson<TransferApplyResponse>('/api/transfer/apply', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  rollbackTransfer: (payload: {
+    rollbackId?: string;
+    targetEnvId?: string;
+    moduleIds?: string[];
+  }) =>
+    requestJson<{ ok: boolean; restoredCount?: number }>('/api/transfer/rollback', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getConflicts: () => requestJson<ActiveConflictItem[]>('/api/conflicts'),
+  resolveConflict: (conflictId: string, strategy: 'working' | 'source' | 'target') =>
+    requestJson<{ output: string }>('/api/conflicts/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ conflictId, strategy }),
+    }),
+  openConflictInVsCode: (conflictId: string, mode: 'file' | 'diff') =>
+    requestJson<{ ok: boolean; launched: string; mode: string; target: string }>(
+      '/api/conflicts/open-vscode',
+      {
+        method: 'POST',
+        body: JSON.stringify({ conflictId, mode }),
+      }
+    ),
+  openAllConflictsInVsCode: (filter?: { targetEnvId?: string; moduleId?: string }) =>
+    requestJson<{ ok: boolean; count: number; launched: string }>(
+      '/api/conflicts/open-all-vscode',
+      {
+        method: 'POST',
+        body: JSON.stringify(filter ?? {}),
       }
     ),
 
-  openInEditor: (branchId: string, filePath: string) =>
-    requestJson<{ ok: boolean; simulated?: boolean; message?: string }>('/api/system/open-editor', {
+  openFolder: (moduleId?: string, envId?: string) =>
+    requestJson<{ ok: boolean; path: string }>('/api/system/open-folder', {
       method: 'POST',
-      body: JSON.stringify({ branchId, filePath }),
+      body: JSON.stringify({ moduleId, envId }),
     }),
-  openFolder: (branchId: string) =>
-    requestJson<{ ok: boolean; simulated?: boolean; message?: string }>('/api/system/open-folder', {
+  openVsCodeFolder: (moduleId?: string, envId?: string) =>
+    requestJson<{ ok: boolean; path: string }>('/api/system/open-vscode-folder', {
       method: 'POST',
-      body: JSON.stringify({ branchId }),
+      body: JSON.stringify({ moduleId, envId }),
     }),
 
   getLogs: () => requestJson<CommandLogEntry[]>('/api/logs'),

@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle2,
-  XCircle,
-  Save,
-  RefreshCw,
-  ShieldCheck,
-  Terminal,
-  Wrench,
+  Code2,
   FlaskConical,
   HardDrive,
+  RefreshCw,
+  Save,
+  Shield,
+  ShieldCheck,
+  Terminal,
+  XCircle,
 } from 'lucide-react';
 import type { HealthInfo, PublicAppSettings } from '../../../shared/types';
 import { api } from '../api/client';
@@ -17,28 +18,38 @@ import { useI18n } from '../i18n/I18nContext';
 
 interface SettingsPageProps {
   health: HealthInfo | null;
-  onSettingsSaved: () => Promise<void>;
+  onSaved: () => Promise<void>;
 }
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSaved }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSaved }) => {
   const { t } = useI18n();
   const { toast } = useToast();
 
   const [settings, setSettings] = useState<PublicAppSettings | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
+  const [ignoreText, setIgnoreText] = useState('');
+  const [protectedText, setProtectedText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [testingSvn, setTestingSvn] = useState(false);
-  const [svnTestResult, setSvnTestResult] = useState<{
+
+  const [svnStatus, setSvnStatus] = useState<{
     available: boolean;
     version: string | null;
     error?: string;
     detectedSvnPaths: string[];
   } | null>(null);
+  const [vscodeStatus, setVscodeStatus] = useState<{
+    available: boolean;
+    vscodePath: string | null;
+  } | null>(null);
 
   useEffect(() => {
     api
       .getSettings()
-      .then(setSettings)
+      .then((s) => {
+        setSettings(s);
+        setIgnoreText(s.ignorePatterns.join('\n'));
+        setProtectedText(s.protectedPatterns.join('\n'));
+      })
       .catch((err) => toast(err.message, 'error'));
   }, [toast]);
 
@@ -51,10 +62,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
       const updated = await api.updateSettings({
         ...settings,
         ...(passwordInput ? { password: passwordInput } : {}),
+        ignorePatterns: ignoreText
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        protectedPatterns: protectedText
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
       });
       setSettings(updated);
       setPasswordInput('');
-      await onSettingsSaved();
+      await onSaved();
       toast('Settings saved successfully', 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error');
@@ -63,46 +82,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
     }
   };
 
-  const handleTestSvn = async () => {
-    setTestingSvn(true);
-    try {
-      const res = await api.testSvnPath(settings.svnPath);
-      setSvnTestResult(res);
-    } catch (err) {
-      toast(err instanceof Error ? err.message : String(err), 'error');
-    } finally {
-      setTestingSvn(false);
-    }
-  };
-
-  const handleResetDemo = async () => {
-    try {
-      await api.resetDemo();
-      await onSettingsSaved();
-      toast('Demo sandbox restored to initial state', 'success');
-    } catch (err) {
-      toast(err instanceof Error ? err.message : String(err), 'error');
-    }
-  };
-
-  const detectedPaths = svnTestResult?.detectedSvnPaths ?? health?.detectedSvnPaths ?? [];
+  const detectedPaths = svnStatus?.detectedSvnPaths ?? health?.detectedSvnPaths ?? [];
 
   return (
     <form onSubmit={handleSave} className="max-w-4xl space-y-6">
-      {/* Execution Mode */}
+      {/* Mode */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            {t('settingsModeTitle')}
-          </h2>
-          {settings.mode === 'demo' && (
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base font-bold">{t('settingsModeTitle')}</h2>
+          {settings.mode === 'sample' && (
             <button
               type="button"
-              onClick={handleResetDemo}
+              onClick={async () => {
+                await api.resetSampleRepo();
+                await onSaved();
+                toast('Sample RCM repository restored on disk', 'success');
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 text-xs font-semibold"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              {t('resetDemo')}
+              {t('resetSample')}
             </button>
           )}
         </div>
@@ -110,26 +109,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             type="button"
-            onClick={() => setSettings({ ...settings, mode: 'demo' })}
-            className={`rounded-xl border p-4 text-start transition-all ${
-              settings.mode === 'demo'
+            onClick={() => setSettings({ ...settings, mode: 'sample' })}
+            className={`rounded-xl border p-4 text-start ${
+              settings.mode === 'sample'
                 ? 'border-amber-500 bg-amber-500/10'
                 : 'border-slate-200 dark:border-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 font-bold text-sm text-amber-400">
               <FlaskConical className="w-4 h-4" />
-              {t('modeDemo')}
+              {t('modeSample')}
             </div>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t('settingsModeDemoDesc')}
+              {t('settingsModeSampleDesc')}
             </p>
+            <div dir="ltr" className="mt-2 text-[11px] font-mono text-amber-300/80 truncate">
+              {settings.sampleRepoRoot}
+            </div>
           </button>
 
           <button
             type="button"
             onClick={() => setSettings({ ...settings, mode: 'real' })}
-            className={`rounded-xl border p-4 text-start transition-all ${
+            className={`rounded-xl border p-4 text-start ${
               settings.mode === 'real'
                 ? 'border-emerald-500 bg-emerald-500/10'
                 : 'border-slate-200 dark:border-slate-800'
@@ -142,120 +144,158 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {t('settingsModeRealDesc')}
             </p>
+            <div dir="ltr" className="mt-2 text-[11px] font-mono text-emerald-300/80 truncate">
+              {settings.repoRoot}
+            </div>
           </button>
-        </div>
-      </div>
-
-      {/* SVN CLI Configuration */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Terminal className="w-5 h-5 text-indigo-500" />
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            {t('settingsSvnTitle')}
-          </h2>
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-            {t('svnPathLabel')}
+            {t('repoRootLabel')}
           </label>
-          <div className="flex flex-wrap gap-2">
-            <input
-              dir="ltr"
-              type="text"
-              value={settings.svnPath}
-              onChange={(e) => setSettings({ ...settings, svnPath: e.target.value })}
-              placeholder="C:\Program Files\TortoiseSVN\bin\svn.exe"
-              className="flex-1 min-w-[240px] rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
-            />
-            <button
-              type="button"
-              disabled={testingSvn}
-              onClick={handleTestSvn}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold disabled:opacity-50"
-            >
-              {t('btnTestSvn')}
-            </button>
-          </div>
+          <input
+            dir="ltr"
+            type="text"
+            value={settings.repoRoot}
+            onChange={(e) => setSettings({ ...settings, repoRoot: e.target.value })}
+            placeholder="C:\Users\appdev3l\Desktop\rcm"
+            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
+          />
         </div>
-
-        {(svnTestResult || health) && (
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            {(svnTestResult ? svnTestResult.available : health?.svnAvailable) ? (
-              <span className="inline-flex items-center gap-1.5 text-emerald-500">
-                <CheckCircle2 className="w-4 h-4" />
-                {t('svnConnected', {
-                  version: svnTestResult?.version ?? health?.svnVersion ?? 'ok',
-                })}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-rose-400">
-                <XCircle className="w-4 h-4" />
-                {t('svnNotFound')}
-                {svnTestResult?.error && (
-                  <span dir="ltr" className="font-mono">
-                    ({svnTestResult.error})
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-        )}
-
-        {detectedPaths.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="text-xs text-slate-500">{t('detectedPathsLabel')}</div>
-            <div className="flex flex-wrap gap-2">
-              {detectedPaths.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  dir="ltr"
-                  onClick={() => setSettings({ ...settings, svnPath: p })}
-                  className="px-2.5 py-1 rounded-lg text-xs font-mono bg-slate-100 dark:bg-slate-800 hover:bg-indigo-500/20 text-indigo-400"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Authentication & SSL */}
+      {/* SVN & VS Code */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Terminal className="w-4 h-4 text-indigo-500" />
+              {t('svnPathLabel')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                dir="ltr"
+                type="text"
+                value={settings.svnPath}
+                onChange={(e) => setSettings({ ...settings, svnPath: e.target.value })}
+                className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await api.testSvn(settings.svnPath);
+                  setSvnStatus(res);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+              >
+                {t('btnTestSvn')}
+              </button>
+            </div>
+            {(svnStatus || health) && (
+              <div className="text-xs font-semibold">
+                {(svnStatus ? svnStatus.available : health?.svnAvailable) ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-500">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    v{svnStatus?.version ?? health?.svnVersion}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-rose-400">
+                    <XCircle className="w-3.5 h-3.5" />
+                    Not detected on this PC
+                  </span>
+                )}
+              </div>
+            )}
+            {detectedPaths.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {detectedPaths.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    dir="ltr"
+                    onClick={() => setSettings({ ...settings, svnPath: p })}
+                    className="px-2 py-0.5 rounded bg-slate-800 text-[11px] font-mono text-indigo-400"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+              <Code2 className="w-4 h-4 text-blue-500" />
+              {t('editorCmdLabel')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                dir="ltr"
+                type="text"
+                value={settings.editorCommand}
+                onChange={(e) => setSettings({ ...settings, editorCommand: e.target.value })}
+                placeholder="code"
+                className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await api.testVsCode();
+                  setVscodeStatus(res);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold"
+              >
+                {t('btnTestVsCode')}
+              </button>
+            </div>
+            {(vscodeStatus || health) && (
+              <div className="text-xs font-semibold">
+                {(vscodeStatus ? vscodeStatus.available : health?.vscodeAvailable) ? (
+                  <span dir="ltr" className="inline-flex items-center gap-1 text-emerald-500 font-mono">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {vscodeStatus?.vscodePath ?? health?.vscodePath}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-amber-400">
+                    <XCircle className="w-3.5 h-3.5" />
+                    VS Code CLI not detected
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Auth & SSL */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 space-y-4">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-emerald-500" />
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            {t('settingsAuthTitle')}
-          </h2>
+          <h2 className="text-base font-bold">{t('authTitle')}</h2>
         </div>
 
         <div className="space-y-2">
           <label className="flex items-center gap-2.5 cursor-pointer">
             <input
               type="radio"
-              name="authMode"
               checked={settings.authMode === 'cached'}
               onChange={() => setSettings({ ...settings, authMode: 'cached' })}
-              className="text-indigo-600"
             />
-            <span className="text-sm text-slate-700 dark:text-slate-200">{t('authCached')}</span>
+            <span className="text-sm">{t('authCached')}</span>
           </label>
           <label className="flex items-center gap-2.5 cursor-pointer">
             <input
               type="radio"
-              name="authMode"
               checked={settings.authMode === 'custom'}
               onChange={() => setSettings({ ...settings, authMode: 'custom' })}
-              className="text-indigo-600"
             />
-            <span className="text-sm text-slate-700 dark:text-slate-200">{t('authCustom')}</span>
+            <span className="text-sm">{t('authCustom')}</span>
           </label>
         </div>
 
         {settings.authMode === 'custom' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1">
                 {t('usernameLabel')}
@@ -265,7 +305,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
                 type="text"
                 value={settings.username}
                 onChange={(e) => setSettings({ ...settings, username: e.target.value })}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-mono"
               />
             </div>
             <div>
@@ -277,84 +317,63 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ health, onSettingsSa
                 type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder={settings.hasPassword ? t('passwordSavedPlaceholder') : ''}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
+                placeholder={settings.hasPassword ? '••••••••' : ''}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-mono"
               />
             </div>
           </div>
         )}
 
-        <label className="flex items-center gap-2.5 cursor-pointer pt-2">
+        <label className="flex items-center gap-2.5 cursor-pointer">
           <input
             type="checkbox"
             checked={settings.trustServerCert}
             onChange={(e) => setSettings({ ...settings, trustServerCert: e.target.checked })}
-            className="rounded border-slate-400 text-indigo-600"
           />
-          <span className="text-sm text-slate-700 dark:text-slate-300">
-            {t('trustCertLabel')}
-          </span>
+          <span className="text-sm">{t('trustCertLabel')}</span>
         </label>
       </div>
 
-      {/* Workflow & Editor */}
+      {/* Ignore & Protected Rules */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Wrench className="w-5 h-5 text-sky-500" />
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            {t('settingsWorkflowTitle')}
-          </h2>
+          <Shield className="w-5 h-5 text-amber-500" />
+          <h2 className="text-base font-bold">Protection & Ignore Rules</h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
-              {t('editorCommandLabel')}
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+              {t('ignorePatternsLabel')}
             </label>
-            <input
+            <textarea
               dir="ltr"
-              type="text"
-              value={settings.editorCommand}
-              onChange={(e) => setSettings({ ...settings, editorCommand: e.target.value })}
-              placeholder="code"
-              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
+              rows={7}
+              value={ignoreText}
+              onChange={(e) => setIgnoreText(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-3 text-xs font-mono"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
-              {t('defaultScanRootLabel')}
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+              {t('protectedPatternsLabel')}
             </label>
-            <input
+            <textarea
               dir="ltr"
-              type="text"
-              value={settings.defaultScanRoot}
-              onChange={(e) => setSettings({ ...settings, defaultScanRoot: e.target.value })}
-              placeholder="D:\CompanySVN"
-              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm font-mono"
+              rows={7}
+              value={protectedText}
+              onChange={(e) => setProtectedText(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-3 text-xs font-mono"
             />
           </div>
         </div>
-
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.autoUpdateBeforeMerge}
-            onChange={(e) =>
-              setSettings({ ...settings, autoUpdateBeforeMerge: e.target.checked })
-            }
-            className="rounded border-slate-400 text-indigo-600"
-          />
-          <span className="text-sm text-slate-700 dark:text-slate-300">
-            {t('autoUpdateBeforeMergeLabel')}
-          </span>
-        </label>
       </div>
 
       <div className="flex justify-end">
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-sm disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
           {t('btnSaveSettings')}

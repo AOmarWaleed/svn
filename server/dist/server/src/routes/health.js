@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.healthRouter = void 0;
 const express_1 = require("express");
 const store_1 = require("../config/store");
+const vscodeLauncher_1 = require("../utils/vscodeLauncher");
 exports.healthRouter = (0, express_1.Router)();
 exports.healthRouter.get('/', async (_req, res, next) => {
     try {
@@ -10,14 +11,21 @@ exports.healthRouter.get('/', async (_req, res, next) => {
         const detected = (0, store_1.getCachedDetectedSvnPaths)().length > 0
             ? (0, store_1.getCachedDetectedSvnPaths)()
             : await (0, store_1.detectInstalledSvnPaths)();
-        const svnTest = await (0, store_1.testSvnExecutable)(settings.svnPath);
+        const [svnTest, vscodePath] = await Promise.all([
+            (0, store_1.testSvnExecutable)(settings.svnPath),
+            (0, vscodeLauncher_1.detectVsCodePath)(),
+        ]);
         const info = {
             ok: true,
             mode: settings.mode,
+            activeRepoRoot: (0, store_1.getActiveRepoRoot)(),
+            sampleRepoRoot: (0, store_1.getSampleRepoRoot)(),
             svnAvailable: svnTest.available,
             svnVersion: svnTest.version,
             svnPath: settings.svnPath,
             detectedSvnPaths: detected,
+            vscodeAvailable: Boolean(vscodePath),
+            vscodePath,
             editorCommand: settings.editorCommand,
             platform: process.platform,
         };

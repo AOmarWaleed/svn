@@ -1,18 +1,18 @@
 @echo off
-title SVN Control Center
+title RCM Transfer Hub
 cd /d "%~dp0"
 
 if not exist "server\dist\server\src\index.js" (
-  echo Building SVN Control Center for first launch...
+  echo Building RCM Transfer Hub...
   call npm.cmd run build
   if errorlevel 1 (
-    echo Build failed! Please check Node.js and npm setup.
+    echo Build failed!
     pause
     exit /b 1
   )
 )
 
-echo Starting SVN Control Center on http://127.0.0.1:4100 ...
+echo Starting RCM Transfer Hub on http://127.0.0.1:4100 ...
 start "" /b cmd /c "timeout /t 2 /nobreak >nul && start http://127.0.0.1:4100"
 node server\dist\server\src\index.js
 pause

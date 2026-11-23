@@ -10,35 +10,31 @@ interface I18nContextValue {
   theme: Theme;
   toggleTheme: () => void;
   t: (key: TranslationKey, params?: Record<string, string | number>) => string;
-  isRtl: boolean;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLangState] = useState<Language>(() => {
-    const saved = localStorage.getItem('svn_cc_lang');
+    const saved = localStorage.getItem('rcm_hub_lang');
     return saved === 'ar' || saved === 'en' ? saved : 'ar';
   });
 
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('svn_cc_theme');
+    const saved = localStorage.getItem('rcm_hub_theme');
     return saved === 'light' || saved === 'dark' ? saved : 'dark';
   });
 
   useEffect(() => {
-    localStorage.setItem('svn_cc_lang', lang);
+    localStorage.setItem('rcm_hub_lang', lang);
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
   useEffect(() => {
-    localStorage.setItem('svn_cc_theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    localStorage.setItem('rcm_hub_theme', theme);
+    if (theme === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [theme]);
 
   const setLang = (next: Language) => setLangState(next);
@@ -56,17 +52,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <I18nContext.Provider
-      value={{
-        lang,
-        setLang,
-        toggleLang,
-        theme,
-        toggleTheme,
-        t,
-        isRtl: lang === 'ar',
-      }}
-    >
+    <I18nContext.Provider value={{ lang, setLang, toggleLang, theme, toggleTheme, t }}>
       {children}
     </I18nContext.Provider>
   );

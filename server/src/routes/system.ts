@@ -1,110 +1,52 @@
-import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import { Router } from 'express';
-import { getSettings } from '../config/store';
-import { getActiveBranchById } from '../providers/providerManager';
-import { resolveSafeFilePath } from '../utils/pathSafety';
+import { getActiveRepoRoot, getModuleById, getSettings } from '../config/store';
+import { resolveInsideRoot } from '../utils/pathSafety';
+import { openFilesInEditor, openFolderInExplorer } from '../utils/vscodeLauncher';
 
 export const systemRouter = Router();
 
-systemRouter.post('/open-editor', (req, res, next) => {
+systemRouter.post('/open-folder', (req, res, next) => {
   try {
-    const { branchId, filePath } = req.body ?? {};
-    if (!branchId || !filePath) {
-      res.status(400).json({ error: 'branchId and filePath are required.' });
-      return;
-    }
+    const { moduleId, envId } = req.body ?? {};
+    const repoRoot = getActiveRepoRoot();
+    let targetPath = repoRoot;
 
-    const branch = getActiveBranchById(String(branchId));
-    const fullPath = resolveSafeFilePath(branch.path, String(filePath));
-    const settings = getSettings();
-
-    if (settings.mode === 'demo') {
-      res.json({
-        ok: true,
-        simulated: true,
-        fullPath,
-        editor: settings.editorCommand || 'code',
-        message: `Demo mode: simulated opening ${fullPath} in "${settings.editorCommand || 'code'}".`,
-      });
-      return;
-    }
-
-    if (!fs.existsSync(fullPath)) {
-      res.status(404).json({ error: `File does not exist on disk: ${fullPath}` });
-      return;
-    }
-
-    const editorCmd = (settings.editorCommand || 'code').trim();
-    if (process.platform === 'win32') {
-      if (editorCmd === 'default') {
-        const child = spawn('cmd.exe', ['/c', 'start', '', fullPath], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-        });
-        child.unref();
-      } else {
-        const child = spawn('cmd.exe', ['/c', editorCmd, fullPath], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-        });
-        child.unref();
+    if (moduleId && envId) {
+      const mod = getModuleById(String(moduleId));
+      const rel = mod.paths[String(envId)];
+      if (!rel) {
+        res.status(400).json({ error: 'No mapped path for this module/environment.' });
+        return;
       }
-    } else {
-      const cmd = editorCmd === 'default' ? 'xdg-open' : editorCmd;
-      const child = spawn(cmd, [fullPath], { detached: true, stdio: 'ignore' });
-      child.unref();
+      targetPath = resolveInsideRoot(repoRoot, rel);
     }
 
-    res.json({ ok: true, simulated: false, fullPath, editor: editorCmd });
+    openFolderInExplorer(targetPath);
+    res.json({ ok: true, path: targetPath });
   } catch (err) {
     next(err);
   }
 });
 
-systemRouter.post('/open-folder', (req, res, next) => {
+systemRouter.post('/open-vscode-folder', async (req, res, next) => {
   try {
-    const { branchId } = req.body ?? {};
-    if (!branchId) {
-      res.status(400).json({ error: 'branchId is required.' });
-      return;
+    const { moduleId, envId } = req.body ?? {};
+    const repoRoot = getActiveRepoRoot();
+    let targetPath = repoRoot;
+
+    if (moduleId && envId) {
+      const mod = getModuleById(String(moduleId));
+      const rel = mod.paths[String(envId)];
+      if (!rel) {
+        res.status(400).json({ error: 'No mapped path for this module/environment.' });
+        return;
+      }
+      targetPath = resolveInsideRoot(repoRoot, rel);
     }
 
-    const branch = getActiveBranchById(String(branchId));
     const settings = getSettings();
-
-    if (settings.mode === 'demo') {
-      res.json({
-        ok: true,
-        simulated: true,
-        path: branch.path,
-        message: `Demo mode: simulated opening folder ${branch.path}.`,
-      });
-      return;
-    }
-
-    if (!fs.existsSync(branch.path)) {
-      res.status(404).json({ error: `Folder not found on disk: ${branch.path}` });
-      return;
-    }
-
-    if (process.platform === 'win32') {
-      const child = spawn('explorer.exe', [branch.path], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    } else {
-      const child = spawn('xdg-open', [branch.path], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    }
-
-    res.json({ ok: true, simulated: false, path: branch.path });
+    const bin = await openFilesInEditor([targetPath], settings.editorCommand);
+    res.json({ ok: true, launched: bin, path: targetPath });
   } catch (err) {
     next(err);
   }

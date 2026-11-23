@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  LayoutDashboard,
+  LayoutGrid,
   GitMerge,
-  AlertTriangle,
-  History,
+  Code2,
+  FolderGit2,
   Settings,
   RefreshCw,
   Sun,
@@ -15,142 +15,103 @@ import {
   X,
   RotateCcw,
 } from 'lucide-react';
-import type { BranchStatus, HealthInfo, PublicAppSettings } from '../../shared/types';
+import type { HealthInfo, RepoOverview } from '../../shared/types';
 import { api } from './api/client';
-import { AddBranchModal } from './components/AddBranchModal';
-import { CommitModal } from './components/CommitModal';
 import { ConsoleDrawer } from './components/ConsoleDrawer';
 import { ToastProvider, useToast } from './components/ToastContext';
 import { I18nProvider, useI18n } from './i18n/I18nContext';
 import { ConflictsPage } from './pages/ConflictsPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { HistoryDiffPage } from './pages/HistoryDiffPage';
-import { MergePage } from './pages/MergePage';
+import { MappingPage } from './pages/MappingPage';
+import { OverviewPage } from './pages/OverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TransferPage } from './pages/TransferPage';
 
-type NavTab = 'dashboard' | 'merge' | 'conflicts' | 'history' | 'settings';
+type NavTab = 'overview' | 'transfer' | 'conflicts' | 'mapping' | 'settings';
 
 const AppShell: React.FC = () => {
   const { t, toggleLang, theme, toggleTheme } = useI18n();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<NavTab>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [health, setHealth] = useState<HealthInfo | null>(null);
-  const [settings, setSettings] = useState<PublicAppSettings | null>(null);
-  const [statuses, setStatuses] = useState<BranchStatus[]>([]);
-  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [overview, setOverview] = useState<RepoOverview | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [addBranchOpen, setAddBranchOpen] = useState(false);
-  const [commitTarget, setCommitTarget] = useState<BranchStatus | null>(null);
+  const [transferSource, setTransferSource] = useState<string>('dev');
+  const [transferTarget, setTransferTarget] = useState<string>('test');
+  const [transferModules, setTransferModules] = useState<string[] | undefined>(undefined);
 
-  const [mergeSourcePreset, setMergeSourcePreset] = useState<string | undefined>();
-  const [mergeTargetPreset, setMergeTargetPreset] = useState<string | undefined>();
-  const [diffBranchPreset, setDiffBranchPreset] = useState<string | undefined>();
-  const [conflictBranchPreset, setConflictBranchPreset] = useState<string | undefined>();
-
-  const loadMetadata = useCallback(async () => {
+  const loadAll = useCallback(async () => {
+    setLoading(true);
     try {
-      const [h, s] = await Promise.all([api.getHealth(), api.getSettings()]);
+      const [h, ov] = await Promise.all([api.getHealth(), api.getOverview()]);
       setHealth(h);
-      setSettings(s);
-    } catch {
-      // handled on status load
+      setOverview(ov);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  const refreshAll = useCallback(
-    async (remote = false) => {
-      setLoadingStatus(true);
-      try {
-        const list = await api.getAllStatus(remote);
-        setStatuses(list);
-      } catch (err) {
-        toast(err instanceof Error ? err.message : String(err), 'error');
-      } finally {
-        setLoadingStatus(false);
-      }
-    },
-    [toast]
-  );
+  }, [toast]);
 
   useEffect(() => {
-    loadMetadata();
-    refreshAll(false);
-  }, [loadMetadata, refreshAll]);
+    loadAll();
+  }, [loadAll]);
 
-  const totalConflicts = useMemo(
-    () =>
-      statuses.reduce(
-        (sum, s) => sum + s.counts.conflicted + s.counts.treeConflicts,
-        0
-      ),
-    [statuses]
-  );
-
-  const handleNavigateMerge = (branchId: string, isMaster: boolean) => {
-    const master = statuses.find((b) => b.isMaster);
-    if (isMaster) {
-      const feature = statuses.find((b) => !b.isMaster);
-      setMergeSourcePreset(feature?.branchId);
-      setMergeTargetPreset(branchId);
-    } else {
-      setMergeSourcePreset(branchId);
-      setMergeTargetPreset(master?.branchId);
-    }
-    setActiveTab('merge');
+  const handleStartTransfer = (
+    sourceEnvId: string,
+    targetEnvId: string,
+    moduleIds?: string[]
+  ) => {
+    setTransferSource(sourceEnvId);
+    setTransferTarget(targetEnvId);
+    setTransferModules(moduleIds);
+    setActiveTab('transfer');
   };
 
-  const handleNavigateDiff = (branchId: string) => {
-    setDiffBranchPreset(branchId);
-    setActiveTab('history');
-  };
-
-  const handleNavigateConflicts = (branchId?: string) => {
-    setConflictBranchPreset(branchId);
-    setActiveTab('conflicts');
-  };
-
-  const handleResetDemoQuick = async () => {
+  const handleQuickResetSample = async () => {
     try {
-      await api.resetDemo();
-      await Promise.all([loadMetadata(), refreshAll(false)]);
-      toast('Demo sandbox reset to initial state', 'success');
+      await api.resetSampleRepo();
+      await loadAll();
+      toast('Sample RCM repository restored on disk', 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error');
     }
   };
+
+  const totalConflicts = overview?.totalConflicts ?? 0;
 
   const navItems: Array<{
     id: NavTab;
     label: string;
     icon: React.ReactNode;
     badge?: number;
-    badgeDanger?: boolean;
+    danger?: boolean;
   }> = [
     {
-      id: 'dashboard',
-      label: t('navDashboard'),
-      icon: <LayoutDashboard className="w-4 h-4" />,
-      badge: statuses.length,
+      id: 'overview',
+      label: t('navOverview'),
+      icon: <LayoutGrid className="w-4 h-4" />,
+      badge: overview?.rows.length,
     },
     {
-      id: 'merge',
-      label: t('navMerge'),
+      id: 'transfer',
+      label: t('navTransfer'),
       icon: <GitMerge className="w-4 h-4" />,
     },
     {
       id: 'conflicts',
       label: t('navConflicts'),
-      icon: <AlertTriangle className="w-4 h-4" />,
+      icon: <Code2 className="w-4 h-4" />,
       badge: totalConflicts > 0 ? totalConflicts : undefined,
-      badgeDanger: totalConflicts > 0,
+      danger: totalConflicts > 0,
     },
     {
-      id: 'history',
-      label: t('navHistory'),
-      icon: <History className="w-4 h-4" />,
+      id: 'mapping',
+      label: t('navMapping'),
+      icon: <FolderGit2 className="w-4 h-4" />,
     },
     {
       id: 'settings',
@@ -163,7 +124,6 @@ const AppShell: React.FC = () => {
 
   return (
     <div className="h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
-      {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
@@ -174,7 +134,9 @@ const AppShell: React.FC = () => {
       {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 z-40 w-64 shrink-0 border-e border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-transform duration-200 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full lg:translate-x-0 rtl:lg:translate-x-0'
+          sidebarOpen
+            ? 'translate-x-0'
+            : '-translate-x-full rtl:translate-x-full lg:translate-x-0 rtl:lg:translate-x-0'
         }`}
       >
         <div className="px-5 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
@@ -183,18 +145,16 @@ const AppShell: React.FC = () => {
               <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
                 <GitMerge className="w-4 h-4" />
               </div>
-              <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-white">
+              <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                 {t('appTitle')}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              {t('appSubtitle')}
-            </p>
+            <p className="mt-1 text-[11px] text-slate-500">{t('appSubtitle')}</p>
           </div>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1 text-slate-400 hover:text-white"
+            className="lg:hidden p-1 text-slate-400"
           >
             <X className="w-5 h-5" />
           </button>
@@ -224,7 +184,7 @@ const AppShell: React.FC = () => {
                 {item.badge !== undefined && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                      item.badgeDanger
+                      item.danger
                         ? 'bg-rose-500 text-white animate-pulse'
                         : active
                           ? 'bg-white/20 text-white'
@@ -239,20 +199,20 @@ const AppShell: React.FC = () => {
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-2">
-          {health?.mode === 'demo' ? (
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2">
+          {health?.mode === 'sample' ? (
             <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 space-y-2">
               <div className="flex items-center gap-1.5 font-bold text-amber-400">
                 <FlaskConical className="w-3.5 h-3.5" />
-                {t('modeDemo')}
+                {t('modeSample')}
               </div>
               <button
                 type="button"
-                onClick={handleResetDemoQuick}
-                className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold transition-colors"
+                onClick={handleQuickResetSample}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold"
               >
                 <RotateCcw className="w-3 h-3" />
-                {t('resetDemo')}
+                {t('resetSample')}
               </button>
             </div>
           ) : (
@@ -273,36 +233,32 @@ const AppShell: React.FC = () => {
 
       {/* Main Column */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* TopBar */}
         <header className="h-14 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 lg:px-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="lg:hidden p-1.5 rounded-lg text-slate-500"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-base font-bold text-slate-900 dark:text-white truncate">
-              {pageTitle}
-            </h1>
+            <h1 className="text-base font-bold truncate">{pageTitle}</h1>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => refreshAll(false)}
-              title={t('refreshAll')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              onClick={loadAll}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingStatus ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{t('refreshAll')}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{t('refresh')}</span>
             </button>
 
             <button
               type="button"
               onClick={toggleLang}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <Languages className="w-3.5 h-3.5 text-indigo-500" />
               {t('switchLang')}
@@ -311,8 +267,7 @@ const AppShell: React.FC = () => {
             <button
               type="button"
               onClick={toggleTheme}
-              title={theme === 'dark' ? t('lightTheme') : t('darkTheme')}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               {theme === 'dark' ? (
                 <Sun className="w-4 h-4 text-amber-400" />
@@ -323,71 +278,44 @@ const AppShell: React.FC = () => {
           </div>
         </header>
 
-        {/* Scrollable Content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {activeTab === 'dashboard' && (
-            <DashboardPage
-              statuses={statuses}
-              loading={loadingStatus}
-              onRefreshAll={refreshAll}
-              onOpenAddModal={() => setAddBranchOpen(true)}
-              onOpenCommitModal={(b) => setCommitTarget(b)}
-              onNavigateMerge={handleNavigateMerge}
-              onNavigateDiff={handleNavigateDiff}
-              onNavigateConflicts={handleNavigateConflicts}
+          {activeTab === 'overview' && (
+            <OverviewPage
+              overview={overview}
+              health={health}
+              loading={loading}
+              onRefresh={loadAll}
+              onStartTransfer={handleStartTransfer}
+              onGoConflicts={() => setActiveTab('conflicts')}
             />
           )}
 
-          {activeTab === 'merge' && (
-            <MergePage
-              statuses={statuses}
-              initialSourceId={mergeSourcePreset}
-              initialTargetId={mergeTargetPreset}
-              onRefreshAll={refreshAll}
-              onOpenConflicts={(bId) => handleNavigateConflicts(bId)}
+          {activeTab === 'transfer' && (
+            <TransferPage
+              overview={overview}
+              initialSourceEnvId={transferSource}
+              initialTargetEnvId={transferTarget}
+              initialModuleIds={transferModules}
+              onRefreshOverview={loadAll}
+              onGoConflicts={() => setActiveTab('conflicts')}
             />
           )}
 
           {activeTab === 'conflicts' && (
-            <ConflictsPage
-              preferredBranchId={conflictBranchPreset}
-              onConflictsChanged={() => refreshAll(false)}
-            />
+            <ConflictsPage onConflictsChanged={loadAll} />
           )}
 
-          {activeTab === 'history' && (
-            <HistoryDiffPage statuses={statuses} initialBranchId={diffBranchPreset} />
+          {activeTab === 'mapping' && (
+            <MappingPage overview={overview} onChanged={loadAll} />
           )}
 
           {activeTab === 'settings' && (
-            <SettingsPage
-              health={health}
-              onSettingsSaved={async () => {
-                await loadMetadata();
-                await refreshAll(false);
-              }}
-            />
+            <SettingsPage health={health} onSaved={loadAll} />
           )}
         </main>
 
-        {/* Live Command Console Drawer */}
         <ConsoleDrawer />
       </div>
-
-      {/* Modals */}
-      <AddBranchModal
-        open={addBranchOpen}
-        defaultScanRoot={settings?.defaultScanRoot ?? 'D:\\CompanySVN'}
-        onClose={() => setAddBranchOpen(false)}
-        onAdded={() => refreshAll(false)}
-      />
-
-      <CommitModal
-        open={Boolean(commitTarget)}
-        branch={commitTarget}
-        onClose={() => setCommitTarget(null)}
-        onCommitted={() => refreshAll(false)}
-      />
     </div>
   );
 };
